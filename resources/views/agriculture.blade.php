@@ -63,7 +63,7 @@
                     <a @class(['subnav', 'active' => $monthlyAccomplished]) href="{{ route('sector', ['sector' => $key, 'report' => 'monthly-accomplished']) }}">Monthly Accomplished Report</a>
                 @endif
                 @if (in_array($key, ['rice', 'corn'], true) && isset($visible['fertilizer']))
-                    <a @class(['subnav', 'active' => ($sector ?? null) === 'fertilizer']) href="{{ route('sector', 'fertilizer') }}">Fertilizer / Abuno</a>
+                    <a @class(['subnav', 'active' => ($sector ?? null) === 'fertilizer' && request()->query('from') === $key]) href="{{ route('sector', ['sector' => 'fertilizer', 'from' => $key]) }}">Fertilizer / Abuno</a>
                 @endif
             @endforeach
         </nav>
@@ -98,6 +98,9 @@
 
             @unless ($access || $directory || $tilapiaRegister || $livestockRegister !== null || $crop !== null || $monthlyAccomplished)
                 <form class="filters" method="get">
+                    @if (($sector ?? null) === 'fertilizer' && in_array(request()->query('from'), ['rice', 'corn'], true))
+                        <input type="hidden" name="from" value="{{ request()->query('from') }}">
+                    @endif
                     @if (($sector ?? null) === 'corn')
                         <input type="hidden" name="month" value="{{ $plantingMonth->format('Y-m') }}">
                         @if ($search !== '')<input type="hidden" name="q" value="{{ $search }}">@endif
@@ -209,6 +212,9 @@
                         @endif
                         <label class="sr-only" for="search">Search records</label><input id="search" name="q" value="{{ $search }}" placeholder="Search name or area">
                         @if ($sector === 'fertilizer')
+                            @if (in_array(request()->query('from'), ['rice', 'corn'], true))
+                                <input type="hidden" name="from" value="{{ request()->query('from') }}">
+                            @endif
                             <label class="sr-only" for="status-filter">Collection status</label><select id="status-filter" name="status"><option value="">All statuses</option>@foreach (['Collected', 'Pending'] as $status)<option @selected(request('status') === $status)>{{ $status }}</option>@endforeach</select>
                         @endif
                         <button class="secondary">Search</button>

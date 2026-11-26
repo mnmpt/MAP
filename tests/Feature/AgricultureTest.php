@@ -24,6 +24,17 @@ class AgricultureTest extends TestCase
         }
     }
 
+    public function test_only_the_selected_fertilizer_sidebar_link_is_highlighted_for_the_head(): void
+    {
+        $this->actingAs(User::factory()->create(['sector' => 'head']));
+        foreach (['rice' => 'corn', 'corn' => 'rice'] as $selected => $other) {
+            $url = '/sector/fertilizer?from='.$selected;
+            $this->get($url)->assertOk()
+                ->assertSee('class="subnav active" href="'.url($url).'"', false)
+                ->assertSee('class="subnav" href="'.url('/sector/fertilizer?from='.$other).'"', false);
+        }
+    }
+
     public function test_livestock_staff_can_manage_pet_vaccination_from_their_sidebar(): void
     {
         $staff = User::factory()->create(['sector' => 'livestock']);
