@@ -8,6 +8,7 @@
     }
     $dateLabel = match ($livestockRegister) {
         'routine-services' => 'Service date',
+        'vaccination' => 'Vaccination date',
         'poultry-farms' => 'Reporting date',
         default => match ($sector) { 'livestock' => 'Loading date', 'rice' => 'Harvest date', 'corn' => 'Planting date', 'high-value-crops' => 'Production date', 'fertilizer' => 'Allocation date', 'vaccine' => 'Vaccination date', 'fisheries' => 'Distribution date', default => 'Registration date' },
     };
@@ -30,7 +31,7 @@
                 <option value="{{ $cropKey }}">{{ $cropLabel }}</option>
             @endforeach
         </select>
-    @elseif (in_array($key, ['government', 'sex'], true))
+    @elseif (in_array($key, ['government', 'sex', 'animal_sex'], true))
         <select name="{{ $key }}" @if ($key === 'government') required @endif>
             <option value="">{{ $key === 'government' ? 'Select Yes or No' : 'Unspecified' }}</option>
             @foreach ($key === 'government' ? ['Yes' => 'Yes', 'No' => 'No'] : ['M' => 'Male', 'F' => 'Female'] as $option => $optionLabel)
@@ -49,7 +50,7 @@
             $key === 'area' && $sector === 'high-value-crops' => $barangay,
             default => '',
         } }}"
-            type="{{ match(true) { $key === 'unloaded_at' => 'datetime-local', in_array($key, ['collected_at', 'birth_date'], true) => 'date', str_contains($rule, '|integer') || str_contains($rule, '|numeric') => 'number', default => 'text' } }}"
+            type="{{ match(true) { $key === 'unloaded_at' => 'datetime-local', in_array($key, ['collected_at', 'birth_date', 'animal_birth_date'], true) => 'date', str_contains($rule, '|integer') || str_contains($rule, '|numeric') => 'number', default => 'text' } }}"
             @if (str_contains($rule, '|numeric')) step="any" @endif
             @if (preg_match('/\|max:(\d+)/', $rule, $limit)) {{ str_contains($rule, '|string') ? 'maxlength' : 'max' }}="{{ $limit[1] }}" @endif
             @if (str_starts_with($rule, 'required')) required @endif>

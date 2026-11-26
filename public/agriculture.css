@@ -21,6 +21,30 @@ dialog{width:min(94vw,34rem);max-height:90vh;border:1px solid var(--line);border
 .corn-report td { font-variant-numeric: tabular-nums; }
 
 .sidebar nav .subnav { margin-inline-start: 1.25rem; font-size: .87rem; }
+.sidebar[hidden], .sidebar-toggle[hidden] { display: none; }
+.sidebar {
+    position: sticky;
+    inset-block-start: 0;
+    align-self: start;
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+.sidebar > * { flex-shrink: 0; }
+.shell.sidebar-closed { grid-template-columns: minmax(0, 1fr); }
+.topbar-title { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem .9rem; min-width: 0; }
+.sidebar-toggle { padding: .35rem .65rem; font-size: .875rem; }
+@media (max-width: 760px) {
+    .sidebar {
+        position: static;
+        height: auto;
+        max-height: 60vh;
+        max-height: 60dvh;
+    }
+    .shell:has(.sidebar-toggle:not([hidden])) > main { display: contents; }
+    .shell:has(.sidebar-toggle:not([hidden])) .topbar { grid-row: 1; }
+}
 .tilapia-register :is(th, td) { white-space: nowrap; }
 .tilapia-register tbody th { background: inherit; }
 .tilapia-flags { display: flex; flex-wrap: wrap; gap: .6rem 1rem; border: 1px solid var(--line); border-radius: .55rem; }
@@ -230,90 +254,93 @@ dialog::backdrop { background: #040a07bc; }
 
 .login {
     display: block;
-    min-height: 100dvh;
     padding: 0;
-    background: radial-gradient(ellipse at 80% 45%, #203924, transparent 70%), #0b1811;
+    color-scheme: light;
+    background: #1d3624;
 }
-
-.login-header {
-    border-bottom: 1px solid var(--line);
-    background: #0e1e15;
-}
-
-.login-header-inner {
-    max-width: 77rem;
-    padding: .85rem clamp(1.25rem, 5vw, 4rem);
-    margin-inline: auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.login-header .brand { font-size: 1.7rem; }
-.login-header p { text-align: right; font-size: .875rem; font-weight: 650; }
-.login-header p span { display: block; color: var(--muted); font-weight: 400; }
 
 .login-layout {
-    width: min(100%, 77rem);
-    margin-inline: auto;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: center;
-    gap: clamp(1.5rem, 5vw, 5rem);
-    padding: clamp(2.4rem, 6vw, 5rem) clamp(1.25rem, 6vw, 5rem);
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: url("map-farm.jpg") center / cover fixed;
 }
 
 .login-card {
+    --ink: #233629;
+    --muted: #505e50;
     width: 100%;
-    padding: clamp(1.25rem, 3vw, 2.5rem);
-    background: var(--surface);
-    border: 1px solid var(--line);
-    box-shadow: 0 14px 40px #050c0866;
-    gap: 1.2rem;
+    padding: clamp(2rem, 6vw, 5.5rem) clamp(1.5rem, 6vw, 5rem);
+    align-content: center;
+    justify-items: center;
+    background: rgb(251 248 239 / 84%);
+    backdrop-filter: blur(4px);
+    color: var(--ink);
+    border-radius: 1.5rem 0 0 1.5rem;
+    text-align: center;
+    gap: .65rem;
+}
+
+.login-card .brand {
+    flex-direction: column;
+    gap: .35rem;
+    font: 700 2rem/1.2 Georgia, serif;
+    margin-bottom: 1.35rem;
+}
+
+.login-card .map-logo {
+    --map-logo-color: #355f3f;
+    width: 4.75rem;
+    height: 4.75rem;
 }
 
 .login-card h1 {
-    font-size: clamp(2rem, 4vw, 3.4rem);
-    letter-spacing: -.045em;
+    font: 700 clamp(1.85rem, 3vw, 2.65rem)/1.1 Georgia, serif;
+    letter-spacing: -.035em;
 }
 
 .login-card h1::after {
     display: block;
     content: "";
-    width: 3.6rem;
-    height: .22rem;
-    margin-top: 1rem;
+    width: 2.75rem;
+    height: .2rem;
+    margin: .7rem auto 0;
     border-radius: 1rem;
     background: var(--yellow);
 }
 
-.login-card p { max-width: 32ch; }
-.login-card form { max-width: 25rem; gap: 1rem; margin-top: .35rem; }
-.login-card input { min-height: 2.85rem; }
-.login-card button { width: 100%; }
+.login-card form, .login-card .notice { width: min(100%, 25rem); text-align: left; }
+.login-card form { gap: 1rem; margin-top: 1rem; }
+.login-card :is(input, select) { min-height: 3rem; background: #fffdf8; border-color: #a0aaa0; }
+.login-switch a { color: #294e33; font-weight: 700; }
+.login-card button { width: 100%; min-height: 3rem; background: #294e33; color: #fff; }
+.login-card .notice.error { background: #f7e3dd; color: #802f29; }
+.login-card :focus-visible { outline-color: #8d5c17; }
 
 .login-scene {
-    width: 100%;
-    min-height: clamp(24rem, 45vw, 34rem);
-    border: 1px solid var(--line);
-    border-radius: 1rem;
-    background: linear-gradient(0deg, #0b18117a, transparent 60%), url("map-farm.jpg") 70% center / cover;
-    box-shadow: 0 14px 40px #050c0866;
+    display: grid;
+    align-items: end;
+    justify-items: start;
+    padding: clamp(1.5rem, 5vw, 4rem);
+    color: #fffdf3;
+    background: linear-gradient(0deg, #0b1b12ed, transparent 68%);
+}
+
+.login-scene span { color: var(--yellow); font-weight: 750; }
+.login-scene p {
+    max-width: 16ch;
+    margin: .4rem 0;
+    font: 700 clamp(1.55rem, 4vw, 3.3rem)/1.08 Georgia, serif;
 }
 
 @media (max-width: 700px) {
-    .login-layout { grid-template-columns: minmax(0, 1fr); }
-    .login-card { max-width: 29rem; justify-self: center; }
-    .login-scene { display: none; }
+    .login-layout { grid-template-columns: minmax(0, 1fr); background-attachment: scroll; }
+    .login-card { border-radius: 0; }
+    .login-scene { min-height: 12rem; }
     .banner-overview {
         background-image: linear-gradient(90deg, #0c1711f5, #0c1711aa), url("map-farm.jpg");
     }
-}
-
-@media (max-width: 420px) {
-    .login-header-inner { align-items: flex-start; flex-direction: column; gap: .25rem; }
-    .login-header p { text-align: left; padding-inline-start: 4rem; }
 }
 
 :focus-visible {

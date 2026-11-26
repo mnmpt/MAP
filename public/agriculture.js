@@ -96,6 +96,25 @@ async function sync() {
     }
 }
 
+const sidebarToggle = document.querySelector('.sidebar-toggle');
+if (sidebarToggle) {
+    const sidebar = document.getElementById(sidebarToggle.getAttribute('aria-controls'));
+    const setSidebarOpen = open => {
+        sidebar.hidden = !open;
+        sidebar.closest('.shell').classList.toggle('sidebar-closed', !open);
+        sidebarToggle.setAttribute('aria-expanded', String(open));
+    };
+    setSidebarOpen(!window.matchMedia('(max-width: 760px)').matches);
+    sidebarToggle.hidden = false;
+    sidebarToggle.addEventListener('click', () => setSidebarOpen(sidebar.hidden));
+    sidebar.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            setSidebarOpen(false);
+            sidebarToggle.focus();
+        }
+    });
+}
+
 document.querySelectorAll('[data-open]').forEach(button => {
     button.addEventListener('click', () => document.getElementById(button.dataset.open).showModal());
 });

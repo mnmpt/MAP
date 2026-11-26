@@ -13,6 +13,63 @@ class AgricultureTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_registration_requires_head_approval_before_sector_sign_in(): void
+    {
+        $this->get('/login')->assertOk()->assertSee('Register for a sector');
+        $this->get('/register')->assertOk()->assertSee('Select your sector')
+            ->assertSeeTextInOrder(['Corn', 'Rice', 'Poultry and Livestock', 'High Value Crops', 'Fisheries'])
+            ->assertDontSee('Pet Vaccination')->assertDontSee('Fertilizer')->assertDontSee('Farmers Masterlist');
+        $registration = [
+            'name' => 'New Employee', 'email' => 'employee@example.test',
+            'password' => 'test-password-2026', 'password_confirmation' => 'test-password-2026',
+        ];
+        $this->post('/register', $registration + ['sector' => 'head'])->assertSessionHasErrors('sector');
+        $this->post('/register', $registration + ['sector' => 'fertilizer'])->assertSessionHasErrors('sector');
+        $this->post('/register', $registration + ['sector' => 'corn'])->assertRedirect('/login');
+        $this->assertDatabaseHas('users', ['email' => $registration['email'], 'sector' => null]);
+        $credentials = array_intersect_key($registration, ['email' => true, 'password' => true]);
+        $this->post('/login', $credentials)->assertSessionHasErrors('email');
+        $this->assertGuest();
+        $this->actingAs(User::where('email', $registration['email'])->firstOrFail());
+        $this->get('/')->assertForbidden();
+        $this->get('/sector/corn')->assertForbidden();
+        $this->get('/reports')->assertForbidden();
+        $this->get('/farmers/directory')->assertForbidden();
+
+        $grant = DB::table('sector_requests')->value('id');
+        $this->actingAs(User::factory()->create(['sector' => 'head']));
+        $this->get('/access')->assertOk()->assertSee('New employee registration')->assertSee($registration['email']);
+        $this->patch('/access/'.$grant, ['status' => 'approved'])->assertRedirect();
+        $this->patch('/access/'.$grant, ['status' => 'approved'])->assertRedirect();
+        $this->patch('/access/'.$grant, ['status' => 'denied'])->assertConflict();
+        $this->assertDatabaseHas('users', ['email' => $registration['email'], 'sector' => 'corn']);
+        $this->post('/logout')->assertRedirect('/login');
+        $this->post('/login', $credentials)->assertRedirect('/sector/corn');
+        $this->get('/sector/corn')->assertOk();
+        $this->get('/')->assertRedirect('/sector/corn');
+        $this->get('/sector/fisheries')->assertForbidden();
+    }
+
+    public function test_livestock_vaccination_is_monthly_and_masks_private_details_for_other_sectors(): void
+    {
+        $staff = User::factory()->create(['sector' => 'livestock']);
+        $other = User::factory()->create(['sector' => 'corn']);
+        $path = '/sector/livestock';
+        $report = $path.'?register=vaccination&month=2026-11';
+        $this->actingAs($staff)->postJson($path, [
+            'submission_id' => Str::uuid()->toString(), 'register' => 'vaccination',
+            'record_date' => '2026-11-13', 'area' => 'North', 'first_name' => 'Mila', 'last_name' => 'Reyes',
+            'species' => 'Dog', 'disease' => 'Rabies', 'vaccine_type' => 'Inactivated', 'contact' => '09123456789',
+        ])->assertOk();
+        $this->get($report)->assertOk()->assertSee('Vaccination Report')->assertSee('Mila')->assertSee('09123456789');
+        $this->get($path.'?register=vaccination&month=2026-10')->assertOk()->assertDontSee('Mila');
+        $this->get('/farmers/directory')->assertOk()->assertSee('Mila Reyes')
+            ->assertSee('Animal vaccination')->assertDontSee('09123456789');
+        $this->actingAs($other)->get($report)->assertForbidden();
+        DB::table('sector_requests')->insert(['user_id' => $other->id, 'sector' => 'livestock', 'status' => 'approved', 'reason' => 'Review report']);
+        $this->get($report)->assertOk()->assertSee('Mila')->assertDontSee('09123456789');
+    }
+
     public function test_livestock_registers_filter_records_total_poultry_and_protect_client_details(): void
     {
         $staff = User::factory()->create(['sector' => 'livestock']);

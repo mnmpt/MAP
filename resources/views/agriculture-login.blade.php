@@ -1,26 +1,45 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in · MAP | LGU Sulop</title><link rel="stylesheet" href="{{ asset('agriculture.css') }}"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ isset($sectors) ? 'Register' : 'Sign in' }} · MAP | LGU Sulop</title><link rel="stylesheet" href="{{ asset('agriculture.css') }}"></head>
 <body class="login">
-<header class="login-header">
-    <div class="login-header-inner">
-        <div class="brand"><span class="map-logo" aria-hidden="true"></span><span>MAP<small>Management of Agriculture Production</small></span></div>
-        <p>Municipal Agriculture Office <span>Sulop, Davao del Sur</span></p>
-    </div>
-</header>
 <main class="login-layout">
+    <aside class="login-scene" aria-label="LGU Sulop">
+        <div>
+            <span>LGU Sulop</span>
+            <p>Municipal Agriculture Office</p>
+            <small>Davao del Sur, Philippines</small>
+        </div>
+    </aside>
     <section class="login-card" aria-labelledby="sign-in-title">
-        <h1 id="sign-in-title">Employee sign in</h1>
-        <p>Use your LGU Sulop agriculture office account to access your workspace.</p>
+        <div class="brand"><span class="map-logo" aria-hidden="true"></span><span>MAP<small>Management of Agriculture Production</small></span></div>
+        <h1 id="sign-in-title">{{ isset($sectors) ? 'Employee registration' : 'Employee sign in' }}</h1>
+        <p>{{ isset($sectors) ? 'Request a sector. The Agriculture Head will review your registration.' : 'Use your LGU Sulop employee account.' }}</p>
+        @if (session('notice')) <div class="notice" role="status">{{ session('notice') }}</div> @endif
         @if ($errors->any()) <div class="notice error" role="alert">{{ $errors->first() }}</div> @endif
-        <form method="post" action="{{ route('login') }}" class="stack">
+        <form method="post" action="{{ route(isset($sectors) ? 'register' : 'login') }}" class="stack">
             @csrf
+            @isset($sectors)
+                <label>Full name <input name="name" value="{{ old('name') }}" autocomplete="name" maxlength="255" required></label>
+                <label>Sector
+                    <select name="sector" required>
+                        <option value="">Select your sector</option>
+                        @foreach ($sectors as $key => $label)
+                            <option value="{{ $key }}" @selected(old('sector') === $key)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            @endisset
             <label>Email address <input type="email" name="email" value="{{ old('email') }}" autocomplete="username" required></label>
-            <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
-            <button>Sign in</button>
+            @isset($sectors)
+                <label>Password <input type="password" name="password" autocomplete="new-password" minlength="12" maxlength="72" required><small>Use at least 12 characters.</small></label>
+                <label>Confirm password <input type="password" name="password_confirmation" autocomplete="new-password" required></label>
+            @else
+                <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+            @endisset
+            <button>{{ isset($sectors) ? 'Submit registration' : 'Sign in' }}</button>
         </form>
+        <p class="login-switch"><a href="{{ route(isset($sectors) ? 'login' : 'register') }}">{{ isset($sectors) ? 'Back to sign in' : 'Register for a sector' }}</a></p>
     </section>
-    <div class="login-scene" aria-hidden="true"></div>
 </main>
 </body>
 </html>

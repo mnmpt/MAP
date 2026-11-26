@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,6 +24,14 @@ use ZipArchive;
 
 class AgricultureController extends Controller
 {
+    private const REGISTRATION_SECTORS = [
+        'corn' => 'Corn',
+        'rice' => 'Rice',
+        'livestock' => 'Poultry and Livestock',
+        'high-value-crops' => 'High Value Crops',
+        'fisheries' => 'Fisheries',
+    ];
+
     public function loginPage(): View|RedirectResponse
     {
         return Auth::check() ? redirect()->route('dashboard') : view('agriculture-login');
@@ -31,13 +41,52 @@ class AgricultureController extends Controller
     {
         $credentials = $request->validate(['email' => 'required|email', 'password' => 'required|string']);
 
-        if (! Auth::attempt($credentials)) {
-            throw ValidationException::withMessages(['email' => 'The email or password is incorrect.']);
+        if (! Auth::attemptWhen($credentials, fn (User $user): bool => $user->hasApprovedWorkspace())) {
+            throw ValidationException::withMessages(['email' => 'Check your email and password. New accounts require approval before signing in.']);
         }
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard'));
+        $sector = $request->user()->sector;
+        $destination = $sector === 'head' ? route('dashboard') : route('sector', $sector);
+
+        return redirect()->intended($destination);
+    }
+
+    public function registrationPage(): View|RedirectResponse
+    {
+        return Auth::check() ? redirect()->route('dashboard') : view('agriculture-login', ['sectors' => self::REGISTRATION_SECTORS]);
+    }
+
+    public function register(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255|unique:users',
+            'password' => ['bail', 'required', 'string', 'min:12', 'confirmed', function (string $attribute, string $password, \Closure $fail): void {
+                if (strlen($password) > 72 || str_contains($password, "\0")) {
+                    $fail('Use a password of at most 72 bytes without null characters.');
+                }
+            }],
+            'sector' => ['required', 'string', Rule::in(array_keys(self::REGISTRATION_SECTORS))],
+        ]);
+
+        try {
+            DB::transaction(function () use ($data): void {
+                $user = User::create(['name' => $data['name'], 'email' => $data['email'], 'password' => $data['password']]);
+                DB::table('sector_requests')->insert([
+                    'user_id' => $user->id,
+                    'sector' => $data['sector'],
+                    'reason' => 'New employee registration',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            });
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages(['email' => 'The email has already been taken.']);
+        }
+
+        return redirect()->route('login')->with('notice', 'Registration submitted. The Agriculture Head must approve your sector before you can sign in.');
     }
 
     public function logout(Request $request): RedirectResponse
@@ -58,11 +107,11 @@ class AgricultureController extends Controller
     public function index(Request $request): View|RedirectResponse
     {
         $user = $request->user();
-        $visible = $this->visible($request);
-        if ($user->sector !== 'head' && isset($visible[$user->sector])) {
+        if ($user->sector !== 'head') {
             return redirect()->route('sector', $user->sector);
         }
 
+        $visible = $this->visible($request);
         [$year, $quarter] = $this->period($request);
         $summary = $this->summary(array_keys($visible), $year, $quarter);
         $previous = $this->previousRice($visible, $year, $quarter);
@@ -90,9 +139,11 @@ class AgricultureController extends Controller
             if ($livestockRegister === null) {
                 $query->whereNull('details->register');
             } else {
-                $query->where('details->register', $livestockRegister)
-                    ->where('record_date', '>=', Carbon::create($year, 1, 1)->toDateString())
-                    ->where('record_date', '<', Carbon::create($year + 1, 1, 1)->toDateString());
+                $query->where('details->register', $livestockRegister);
+                if ($livestockRegister !== 'vaccination') {
+                    $query->where('record_date', '>=', Carbon::create($year, 1, 1)->toDateString())
+                        ->where('record_date', '<', Carbon::create($year + 1, 1, 1)->toDateString());
+                }
             }
         }
         $tilapiaRegister = $sector === 'fisheries' && $request->query('register') === 'tilapia';
@@ -118,7 +169,7 @@ class AgricultureController extends Controller
                 $query->where('details->area', $barangay);
             }
         }
-        if ($sector === 'corn' || $crop !== null || $monthlyAccomplished) {
+        if ($sector === 'corn' || $crop !== null || $monthlyAccomplished || $livestockRegister === 'vaccination') {
             $month = $request->validate(['month' => 'nullable|date_format:Y-m'])['month']
                 ?? now('Asia/Manila')->format('Y-m');
             $plantingMonth = Carbon::createFromFormat('!Y-m', $month);
@@ -282,7 +333,11 @@ class AgricultureController extends Controller
                 'date' => $record->record_date,
                 'sector' => $record->sector,
                 'service' => match ($record->sector) {
-                    'livestock' => ($details['register'] ?? null) === 'routine-services' ? 'Routine animal health service' : 'Livestock loading',
+                    'livestock' => match ($details['register'] ?? null) {
+                        'routine-services' => 'Routine animal health service',
+                        'vaccination' => 'Animal vaccination',
+                        default => 'Livestock loading',
+                    },
                     'vaccine' => 'Pet vaccination',
                     'fisheries' => ($details['transaction'] ?? null) === 'Sold' ? 'Tilapia fingerling sale' : 'Fingerling distribution',
                     'fertilizer' => ($details['status'] ?? null) === 'Collected' ? 'Fertilizer allocation (collected)' : 'Fertilizer allocation (pending collection)',
@@ -324,7 +379,8 @@ class AgricultureController extends Controller
         $visible = $this->visible($request);
         $head = $request->user()->sector === 'head';
         $requests = DB::table('sector_requests')->join('users', 'users.id', '=', 'sector_requests.user_id')
-            ->select('sector_requests.*', 'users.name')->when(! $head, fn (Builder $query) => $query->where('user_id', $request->user()->id))
+            ->select('sector_requests.*', 'users.name', 'users.email', 'users.sector as assigned_sector')
+            ->when(! $head, fn (Builder $query) => $query->where('user_id', $request->user()->id))
             ->latest('sector_requests.updated_at')->paginate(15);
 
         return view('agriculture', compact('visible', 'requests', 'head'));
@@ -332,7 +388,7 @@ class AgricultureController extends Controller
 
     public function requestAccess(Request $request): RedirectResponse
     {
-        abort_if($request->user()->sector === 'head', 403);
+        abort_if(in_array($request->user()->sector, ['head', null], true), 403);
         $data = $request->validate([
             'sector' => ['required', Rule::in(array_keys(array_diff_key(config('agriculture'), $this->visible($request))))],
             'reason' => 'required|string|max:500',
@@ -349,10 +405,25 @@ class AgricultureController extends Controller
     {
         abort_unless($request->user()->sector === 'head', 403);
         $data = $request->validate(['status' => 'required|in:approved,denied']);
-        $updated = DB::table('sector_requests')->where('id', $grant)
-            ->whereIn('status', $data['status'] === 'approved' ? ['pending'] : ['pending', 'approved'])
-            ->update(['status' => $data['status'], 'updated_at' => now()]);
-        abort_unless($updated, 409, 'The request was already updated.');
+        DB::transaction(function () use ($grant, $data): void {
+            $query = DB::table('sector_requests')->where('id', $grant);
+            $access = DB::table('sector_requests')
+                ->join('users', 'users.id', '=', 'sector_requests.user_id')
+                ->where('sector_requests.id', $grant)
+                ->select('sector_requests.user_id', 'sector_requests.sector', 'sector_requests.status', 'users.sector as assigned_sector')
+                ->lockForUpdate()->first();
+            abort_if($access === null, 404);
+            if ($access->status === $data['status']) {
+                return;
+            }
+            abort_if($access->assigned_sector === $access->sector, 409, 'This is the employee’s assigned sector.');
+            $updated = $query->whereIn('status', $data['status'] === 'approved' ? ['pending'] : ['pending', 'approved'])
+                ->update(['status' => $data['status'], 'updated_at' => now()]);
+            abort_unless($updated, 409, 'The request was already updated.');
+            if ($data['status'] === 'approved' && $access->assigned_sector === null) {
+                User::query()->whereKey($access->user_id)->update(['sector' => $access->sector]);
+            }
+        });
 
         return back()->with('notice', 'Access updated.');
     }
@@ -408,7 +479,7 @@ class AgricultureController extends Controller
             $rules['submission_id'] = 'required|uuid';
         }
         $data = Validator::make($input, $rules)->validate();
-        if ($register === 'routine-services') {
+        if (in_array($register, ['routine-services', 'vaccination'], true)) {
             $data['name'] = Str::squish($data['first_name'].' '.$data['last_name']);
             $data['farmer_name'] = $data['name'];
         }

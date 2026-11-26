@@ -29,7 +29,7 @@
 </head>
 <body data-user="{{ $user->id }}" data-sync="{{ route('sync.session') }}">
 <div class="shell">
-    <aside class="sidebar">
+    <aside class="sidebar" id="workspace-sidebar">
         <a class="brand" href="{{ route('dashboard') }}"><span class="map-logo" aria-hidden="true"></span><span>MAP<small>Management of Agriculture Production</small></span></a>
         <nav aria-label="Main navigation">
             <span class="group-label">WORKSPACE</span>
@@ -60,7 +60,15 @@
         <form class="logout" method="post" action="{{ route('logout') }}">@csrf <button class="quiet">Sign out</button></form>
     </aside>
     <main>
-        <header class="topbar"><span>Agriculture Office <span class="muted">/</span> {{ $title }}</span><button type="button" class="sync-control" data-open="sync-dialog"><span class="dot"></span><span data-sync-label>Online</span></button></header>
+        <header class="topbar">
+            <div class="topbar-title">
+                <button type="button" class="secondary sidebar-toggle" aria-label="Toggle sidebar" aria-controls="workspace-sidebar" aria-expanded="true" hidden>
+                    <span aria-hidden="true">☰</span>
+                </button>
+                <span>Agriculture Office <span class="muted">/</span> {{ $title }}</span>
+            </div>
+            <button type="button" class="sync-control" data-open="sync-dialog"><span class="dot"></span><span data-sync-label>Online</span></button>
+        </header>
         <div class="content">
             @if (session('notice'))<div class="notice" role="status">{{ session('notice') }}</div>@endif
             @if ($errors->any())<div class="notice error" role="alert"><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -156,7 +164,7 @@
                     @if ($sector === 'corn')
                         <div><h2 id="monthly-planting-title">Monthly Planting Accomplishment</h2><p>Sulop, Davao del Sur · {{ $plantingMonth->format('F Y') }} · Area planted in hectares</p></div>
                     @elseif ($livestockRegister !== null)
-                        <div><h2>{{ $title }}</h2><p>Municipal Agriculture Office · Sulop, Davao del Sur · CY {{ $year }}</p></div>
+                        <div><h2>{{ $livestockRegister === 'vaccination' ? 'Vaccination Report' : $title }}</h2><p>Municipal Agriculture Office · Sulop, Davao del Sur · {{ $livestockRegister === 'vaccination' ? $plantingMonth->format('F Y') : 'CY '.$year }}</p></div>
                     @elseif ($tilapiaRegister)
                         <div><h2>Tilapia Fingerlings Dispersal and Sales</h2><p>Provincial Tilapia Nursery and Hatchery · Bansalan, Davao del Sur</p></div>
                     @elseif ($monthlyAccomplished)
@@ -170,7 +178,11 @@
                         @if ($tilapiaRegister)<input type="hidden" name="register" value="tilapia">@endif
                         @if ($livestockRegister !== null)
                             <input type="hidden" name="register" value="{{ $livestockRegister }}">
-                            <label>Calendar year <input type="number" name="year" min="1900" max="2200" value="{{ $year }}" required></label>
+                            @if ($livestockRegister === 'vaccination')
+                                <label>Month <input type="month" name="month" value="{{ $plantingMonth->format('Y-m') }}" required></label>
+                            @else
+                                <label>Calendar year <input type="number" name="year" min="1900" max="2200" value="{{ $year }}" required></label>
+                            @endif
                         @else
                             <input type="hidden" name="year" value="{{ $year }}">
                         @endif
@@ -201,6 +213,9 @@
                             $recordColumns = $livestockRegisters[$livestockRegister][1];
                             if (!$canWrite) {
                                 unset($recordColumns['sex'], $recordColumns['birth_date'], $recordColumns['contact'], $recordColumns['signature']);
+                                if ($livestockRegister === 'vaccination') {
+                                    unset($recordColumns['address'], $recordColumns['purok'], $recordColumns['reason'], $recordColumns['remarks']);
+                                }
                             }
                         }
                         if ($sector === 'farmers') {
@@ -301,9 +316,9 @@
                 <section class="panel data"><div class="section-head"><h2>{{ $head ? 'Sector access requests' : 'My requests' }}</h2></div>
                     <div class="table-wrap"><table><thead><tr><th>Employee</th><th>Sector</th><th>Reason</th><th>Status</th>@if ($head)<th>Action</th>@endif</tr></thead><tbody>
                         @forelse ($requests as $item)
-                            <tr><td>{{ $item->name }}</td><td>{{ $modules[$item->sector][0] }}</td><td>{{ $item->reason }}</td><td><span class="badge {{ $item->status }}">{{ ucfirst($item->status) }}</span></td>
+                            <tr><td>{{ $item->name }}@if ($head)<br><small>{{ $item->email }}</small>@endif</td><td>{{ $modules[$item->sector][0] }}</td><td>{{ $item->reason }}</td><td><span class="badge {{ $item->status }}">{{ ucfirst($item->status) }}</span></td>
                             @if ($head)<td>
-                                @if ($item->status !== 'denied')
+                                @if ($item->status !== 'denied' && $item->assigned_sector !== $item->sector)
                                     <form class="actions" method="post" action="{{ route('access.decide', $item->id) }}">
                                         @csrf @method('PATCH')
                                         @if ($item->status === 'pending')<button name="status" value="approved">Approve</button>@endif

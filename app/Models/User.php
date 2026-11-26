@@ -17,6 +17,11 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    public function hasApprovedWorkspace(): bool
+    {
+        return $this->sector === 'head' || isset(config('agriculture')[$this->sector]);
+    }
+
     /**
      * Get the attributes that should be cast.
      *
