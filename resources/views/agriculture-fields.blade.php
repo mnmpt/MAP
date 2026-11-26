@@ -2,6 +2,12 @@
     $details = isset($entry) ? json_decode($entry->details, true) : [];
     $selectedCrop = $details['crop'] ?? $crop ?? null;
     $fields = $livestockRegister === null ? config('agriculture')[$sector][3] : $livestockRegisters[$livestockRegister][1];
+    if ($sector === 'high-value-crops' && $selectedCrop !== null) {
+        $fields['commodity'][0] = config('agriculture.high-value-crops')[5][$selectedCrop];
+        if ($crop !== null && !$monthlyAccomplished) {
+            unset($fields['remarks']);
+        }
+    }
     $date = now('Asia/Manila');
     if ($livestockRegister !== null && $date->year !== $year) {
         $date->setDate($year, 1, 1);
@@ -18,6 +24,9 @@
     <input name="record_date" type="date" value="{{ $entry->record_date ?? ($plantingMonth?->toDateString() ?? $date->toDateString()) }}" required>
 </label>
 @foreach ($fields as $key => [$label, $rule])
+    @if ($sector === 'high-value-crops' && $key === 'expenses' && $crop !== null && !$monthlyAccomplished)
+        <label>Gross income (PHP) <output class="crop-income" data-crop-gross>—</output></label>
+    @endif
     @if ($sector === 'high-value-crops' && $key === 'crop' && $selectedCrop !== null)
         <input type="hidden" name="crop" value="{{ $selectedCrop }}">
         @continue
@@ -57,3 +66,6 @@
     @endif
     </label>
 @endforeach
+@if ($sector === 'high-value-crops' && $crop !== null && !$monthlyAccomplished)
+    <label>Net income (PHP) <output class="crop-income" data-crop-net>—</output></label>
+@endif

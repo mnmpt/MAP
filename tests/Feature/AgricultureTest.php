@@ -162,9 +162,12 @@ class AgricultureTest extends TestCase
         $this->get($path.'?crop=banana&month=2026-11&barangay=North')->assertOk()
             ->assertSee('Vegetable Production Report')->assertSee('Cacao Production Report')->assertSee('Banana Production Report')
             ->assertSee('Farmer Saba')->assertDontSee('Farmer Criollo')->assertDontSee('Farmer Okra')
-            ->assertSee('Expansion (ha)')->assertSee('1,050.00')->assertSee('850.00');
-        $this->get($path.'?crop=cacao&month=2026-11')->assertOk()->assertSee('Farmer Criollo')->assertDontSee('Expansion (ha)');
-        $this->get($path.'?crop=vegetable&month=2026-11')->assertOk()->assertSee('Farmer Okra');
+            ->assertSee('Expansion (ha)')->assertSee('1,050.00')->assertSee('850.00')
+            ->assertSeeTextInOrder(['New Banana production record', 'Variety of Banana', 'Expansion (ha)', 'Gross income (PHP)', 'Expenses (PHP)', 'Net income (PHP)']);
+        $this->get($path.'?crop=cacao&month=2026-11')->assertOk()->assertSee('Farmer Criollo')->assertDontSee('Expansion (ha)')
+            ->assertSeeTextInOrder(['New Cacao production record', 'Variety of Cacao']);
+        $this->get($path.'?crop=vegetable&month=2026-11')->assertOk()->assertSee('Farmer Okra')->assertDontSee('Expansion (ha)')
+            ->assertSeeTextInOrder(['New Vegetable production record', 'Commodity']);
         $this->get($path.'?crop=banana&month=2026-10')->assertOk()->assertDontSee('Farmer Saba');
         $this->get($path.'?crop=banana&month=2026-11&barangay=South')->assertOk()->assertDontSee('Farmer Saba');
         $this->get($path.'?report=monthly-accomplished&month=2026-11&barangay=North')->assertOk()
@@ -219,7 +222,7 @@ class AgricultureTest extends TestCase
             'fertilizer' => ['name' => 'Mila  Santos', 'area' => 'North', 'type' => 'Compost', 'quantity' => 2, 'status' => 'Collected', 'collected_at' => '2026-11-05'],
             'vaccine' => ['name' => 'Private pet name', 'farmer_name' => 'Mila Santos', 'area' => 'North', 'species' => 'Dog', 'vaccine' => 'Rabies', 'quantity' => 1],
             'rice' => ['name' => 'Private farm reference', 'farmer_name' => 'Mila Santos', 'area' => 'North', 'hectares' => 1, 'quantity' => 100],
-            'corn' => ['name' => 'Mila Santos', 'area' => 'North', 'technician' => 'Private technician name', 'gmo_yellow' => 1],
+            'corn' => ['name' => 'Mila Santos', 'area' => 'South', 'technician' => 'Private technician name', 'gmo_yellow' => 1],
             'livestock' => ['name' => 'Private batch name', 'farmer_name' => 'Mila Santos', 'area' => 'North', 'species' => 'Chicken', 'loaded' => 10, 'deaths' => 0],
         ];
         foreach ($records as $sector => $details) {
@@ -229,15 +232,20 @@ class AgricultureTest extends TestCase
             ])->assertOk();
         }
 
+        $this->get('/sector/farmers?q=mila')->assertRedirect('/farmers/directory?q=mila');
         $this->get('/farmers/directory?q=mila')->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
-            ->assertSee('Mila Santos')->assertSee('8 entries')
+            ->assertSee('Farmers Masterlist')->assertSee('Mila Santos')->assertSee('8 entries')
+            ->assertSee('Recorded barangays')->assertSee('South')
+            ->assertSee('Corn planting recorded')->assertSee('GMO yellow area (ha)')
             ->assertSee('Fertilizer collected')
             ->assertDontSee('09123456789')->assertDontSee('Private street address')
             ->assertDontSee('Private equipment list')->assertDontSee('Private pet name');
 
         $this->actingAs($staff)->get('/farmers/directory')->assertOk()
             ->assertSee('Fingerling distribution')->assertSee('1 entry')
+            ->assertSee('north')->assertDontSee('South')
+            ->assertSee('Request access to Corn Program')->assertDontSee('GMO yellow area (ha)')
             ->assertSee('Request access to Fertilizer / Abuno')
             ->assertDontSee('Fertilizer collected')->assertDontSee('2026-11-05')->assertDontSee('Farmer registration');
         $this->from('/farmers/directory')->post('/access', ['sector' => 'fertilizer', 'reason' => 'Review farmer history'])

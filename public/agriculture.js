@@ -99,17 +99,81 @@ async function sync() {
 const sidebarToggle = document.querySelector('.sidebar-toggle');
 if (sidebarToggle) {
     const sidebar = document.getElementById(sidebarToggle.getAttribute('aria-controls'));
+    const navigation = sidebar.querySelector('nav');
+    const sidebarStateKey = `map-sidebar:${document.body.dataset.user}`;
+    let savedSidebar;
+    try {
+        savedSidebar = JSON.parse(sessionStorage.getItem(sidebarStateKey));
+    } catch {
+        // The menu still works when browser storage is unavailable.
+    }
     const setSidebarOpen = open => {
         sidebar.hidden = !open;
         sidebar.closest('.shell').classList.toggle('sidebar-closed', !open);
         sidebarToggle.setAttribute('aria-expanded', String(open));
     };
-    setSidebarOpen(!window.matchMedia('(max-width: 760px)').matches);
+    setSidebarOpen(savedSidebar?.open ?? !window.matchMedia('(max-width: 900px)').matches);
     sidebarToggle.hidden = false;
-    sidebarToggle.addEventListener('click', () => setSidebarOpen(sidebar.hidden));
+    const restoreSidebar = () => {
+        if (sidebar.hidden) return;
+        if (savedSidebar) {
+            sidebar.scrollTop = savedSidebar.scrollTop ?? 0;
+            if (savedSidebar.href === location.href && Number.isFinite(savedSidebar.linkOffset)) {
+                const link = Array.from(navigation.querySelectorAll('a')).find(item => item.href === savedSidebar.href);
+                if (link) {
+                    sidebar.scrollTop += link.getBoundingClientRect().top - sidebar.getBoundingClientRect().top
+                        - savedSidebar.linkOffset;
+                }
+            }
+        }
+        const activeLink = navigation.querySelector('a.active');
+        if (!activeLink) return;
+        const bounds = sidebar.getBoundingClientRect();
+        const active = activeLink.getBoundingClientRect();
+        const inset = 8;
+        if (active.top < bounds.top + inset) {
+            sidebar.scrollTop += active.top - bounds.top - inset;
+        } else if (active.bottom > bounds.bottom - inset) {
+            sidebar.scrollTop += active.bottom - bounds.bottom + inset;
+        }
+    };
+    restoreSidebar();
+    window.addEventListener('pageshow', restoreSidebar);
+    const saveSidebar = link => {
+        savedSidebar = {
+            open: !sidebar.hidden,
+            scrollTop: sidebar.hidden ? (savedSidebar?.scrollTop ?? 0) : sidebar.scrollTop,
+            href: link?.href,
+            linkOffset: link ? link.getBoundingClientRect().top - sidebar.getBoundingClientRect().top : undefined,
+        };
+        try {
+            sessionStorage.setItem(sidebarStateKey, JSON.stringify(savedSidebar));
+        } catch {
+            // Navigation still works when browser storage is unavailable.
+        }
+    };
+    let followingSidebarLink = false;
+    navigation.addEventListener('click', event => {
+        const link = event.target.closest('a');
+        if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        followingSidebarLink = link.hash === '' || link.pathname !== location.pathname || link.search !== location.search;
+        saveSidebar(link);
+    });
+    window.addEventListener('pagehide', () => {
+        if (!followingSidebarLink) saveSidebar();
+        followingSidebarLink = false;
+    });
+    sidebarToggle.addEventListener('click', () => {
+        if (!sidebar.hidden) saveSidebar();
+        setSidebarOpen(sidebar.hidden);
+        if (!sidebar.hidden) restoreSidebar();
+        saveSidebar();
+    });
     sidebar.addEventListener('keydown', event => {
         if (event.key === 'Escape') {
+            saveSidebar();
             setSidebarOpen(false);
+            saveSidebar();
             sidebarToggle.focus();
         }
     });
@@ -124,6 +188,22 @@ document.querySelectorAll('[data-close]').forEach(button => {
 document.querySelector('[data-retry]').addEventListener('click', sync);
 
 document.querySelectorAll('[data-record]').forEach(form => {
+    const grossOutput = form.querySelector('[data-crop-gross]');
+    if (grossOutput) {
+        const netOutput = form.querySelector('[data-crop-net]');
+        const format = new Intl.NumberFormat('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const updateIncome = () => {
+            const {quantity, price, expenses} = form.elements;
+            const gross = quantity.valueAsNumber * price.valueAsNumber;
+            const roundedGross = Math.round((gross + Number.EPSILON) * 100) / 100;
+            grossOutput.value = Number.isFinite(gross) ? format.format(roundedGross) : '—';
+            netOutput.value = Number.isFinite(roundedGross - expenses.valueAsNumber)
+                ? format.format(roundedGross - expenses.valueAsNumber) : '—';
+        };
+        form.addEventListener('input', updateIncome);
+        form.addEventListener('reset', () => queueMicrotask(updateIncome));
+        updateIncome();
+    }
     form.addEventListener('submit', async event => {
         event.preventDefault();
         const button = form.querySelector('button[type=submit], button:not([type])');

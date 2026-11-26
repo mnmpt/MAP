@@ -134,7 +134,11 @@ return [
         'price' => ['Price per kg (PHP)', 'required|numeric|min:0|max:1000000|decimal:0,2'],
         'expenses' => ['Expenses (PHP)', 'required|numeric|min:0|max:1000000000000|decimal:0,2'],
         'remarks' => ['Remarks', 'nullable|string|max:500'],
-    ], ['vegetable' => 'Vegetable', 'cacao' => 'Cacao', 'banana' => 'Banana']],
+    ], ['vegetable' => 'Vegetable', 'cacao' => 'Cacao', 'banana' => 'Banana'], [
+        'vegetable' => 'Commodity',
+        'cacao' => 'Variety of Cacao',
+        'banana' => 'Variety of Banana',
+    ]],
     'farmers' => ['Farmers Masterlist', '👥', 'Maintain personal, farm ownership and farming activity records.', [
         'name' => ['Full name', 'required|string|max:160'],
         'area' => ['Barangay / address', 'required|string|max:200'],

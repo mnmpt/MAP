@@ -120,8 +120,11 @@ class AgricultureController extends Controller
         return view('agriculture', compact('visible', 'summary', 'recent', 'year', 'quarter', 'previous'));
     }
 
-    public function sector(Request $request, string $sector): View
+    public function sector(Request $request, string $sector): View|RedirectResponse
     {
+        if ($sector === 'farmers' && ! $request->boolean('profiles')) {
+            return redirect()->route('farmers.directory', $request->only('q'));
+        }
         $visible = $this->visible($request);
         abort_unless(isset(config('agriculture')[$sector]), 404);
         abort_unless(isset($visible[$sector]), 403);
@@ -223,6 +226,9 @@ class AgricultureController extends Controller
         if ($sector === 'livestock' && ($data['register'] ?? null) !== (json_decode($current->details, true)['register'] ?? null)) {
             throw ValidationException::withMessages(['register' => 'A livestock record must stay in its original register.']);
         }
+        if ($sector === 'high-value-crops' && ! array_key_exists('remarks', $data)) {
+            $data['remarks'] = json_decode($current->details, true)['remarks'] ?? null;
+        }
         $revision = $request->validate(['revision' => 'required|string|max:80'])['revision'];
         $values = $this->recordValues($data, $current->user_id, $sector, $current->submission_id);
         unset($values['created_at']);
@@ -323,9 +329,12 @@ class AgricultureController extends Controller
             }
 
             $directory[$key] ??= ['name' => $name, 'history' => [], 'restricted' => []];
+            $barangay = $record->sector === 'farmers' ? ($details['barangay'] ?? null) : ($details['area'] ?? null);
             $directory[$key]['history'][] = [
                 'date' => $record->record_date,
                 'sector' => $record->sector,
+                'barangay' => $barangay,
+                'details' => $this->farmerServiceDetails($record->sector, $details),
                 'service' => match ($record->sector) {
                     'livestock' => match ($details['register'] ?? null) {
                         'routine-services' => 'Routine animal health service',
@@ -342,12 +351,13 @@ class AgricultureController extends Controller
                 },
             ];
             if ($record->sector === 'fertilizer' && ($details['status'] ?? null) === 'Collected' && ! empty($details['collected_at'])) {
-                $directory[$key]['history'][] = ['date' => $details['collected_at'], 'sector' => 'fertilizer', 'service' => 'Fertilizer collected'];
+                $directory[$key]['history'][] = ['date' => $details['collected_at'], 'sector' => 'fertilizer', 'barangay' => $barangay, 'service' => 'Fertilizer collected'];
             }
             if ($record->sector === 'livestock' && ! empty($details['unloaded_at'])) {
                 $directory[$key]['history'][] = [
                     'date' => substr($details['unloaded_at'], 0, 10),
                     'sector' => 'livestock',
+                    'barangay' => $barangay,
                     'service' => 'Livestock unloading / harvest',
                 ];
             }
@@ -361,8 +371,7 @@ class AgricultureController extends Controller
             $pending = DB::table('sector_requests')->where('user_id', $request->user()->id)
                 ->where('status', 'pending')->pluck('sector')->flip();
             $restrictedRecords = $this->records()->whereIn('sector', array_keys($restrictedSectors))
-                ->select('id', 'sector', 'details->name as name', 'details->farmer_name as farmer_name',
-                    'details->area as area', 'details->barangay as barangay')->lazyById();
+                ->select('id', 'sector', 'details->name as name', 'details->farmer_name as farmer_name')->lazyById();
             foreach ($restrictedRecords as $record) {
                 [$name, $key] = $this->farmerIdentity($record->sector, (array) $record);
                 if ($name !== '' && isset($entries[$key])) {
@@ -372,6 +381,8 @@ class AgricultureController extends Controller
         }
         foreach ($entries as &$farmer) {
             $farmer['history'] = collect($farmer['history'])->sortByDesc('date')->values();
+            $farmer['barangays'] = $farmer['history']->pluck('barangay')->filter()
+                ->unique(fn (string $barangay) => Str::lower(Str::squish($barangay)))->implode(', ');
         }
         unset($farmer);
 
@@ -387,9 +398,28 @@ class AgricultureController extends Controller
         $name = Str::squish(in_array($sector, ['livestock', 'vaccine', 'rice'], true)
             ? ($details['farmer_name'] ?? '')
             : ($details['name'] ?? ''));
-        $area = Str::lower(Str::squish($details['barangay'] ?? $details['area'] ?? ''));
 
-        return [$name, Str::lower($name)."\n".$area];
+        return [$name, Str::lower($name)];
+    }
+
+    private function farmerServiceDetails(string $sector, array $details): array
+    {
+        $module = config('agriculture')[$sector];
+        $fields = match ($sector) {
+            'livestock' => $module[4][$details['register'] ?? ''][1] ?? $module[3],
+            'fisheries' => $module[3] + $module[4],
+            default => $module[3],
+        };
+        $private = ['name', 'farmer_name', 'first_name', 'last_name', 'contact', 'address', 'birth_date', 'area', 'barangay',
+            'sex', 'gender', 'signature', 'purok', 'assets', 'ips', 'four_ps', 'pwd', 'osy', 'elderly', 'remarks', 'reason'];
+        $result = [];
+        foreach (array_diff_key($fields, array_flip($private)) as $key => [$label]) {
+            if (isset($details[$key]) && $details[$key] !== '') {
+                $result[$label] = $details[$key];
+            }
+        }
+
+        return $result;
     }
 
     public function access(Request $request): View

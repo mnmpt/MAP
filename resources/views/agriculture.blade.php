@@ -14,7 +14,7 @@
     $title = $livestockRegisters[$livestockRegister][0] ?? ($tilapiaRegister ? 'Tilapia Dispersal' : (isset($sector) ? $modules[$sector][0] : match (true) {
         $report => 'Statistical Reports',
         $access => 'Access Requests',
-        $directory => 'Farmers Directory',
+        $directory => 'Farmers Masterlist',
         default => 'Office Overview',
     }));
     $period = isset($year) ? ['year' => $year, 'quarter' => $quarter] : [];
@@ -26,6 +26,7 @@
     <title>{{ $title }} · MAP | LGU Sulop</title>
     <link rel="stylesheet" href="{{ asset('agriculture.css') }}">
     <script src="{{ asset('agriculture.js') }}" defer></script>
+    <script src="{{ asset('auth-ui.js') }}" defer></script>
 </head>
 <body data-user="{{ $user->id }}" data-sync="{{ route('sync.session') }}">
 <div class="shell">
@@ -36,9 +37,10 @@
             @if ($isHead)<a @class(['active' => request()->routeIs('dashboard')]) href="{{ route('dashboard') }}"><span aria-hidden="true">▦</span> Office Overview</a>@endif
             <a @class(['active' => $report]) href="{{ route('reports') }}"><span aria-hidden="true">▤</span> Statistical Reports</a>
             <a @class(['active' => $access]) href="{{ route('access') }}"><span aria-hidden="true">◈</span> Access Requests</a>
-            <a @class(['active' => $directory]) href="{{ route('farmers.directory') }}"><span aria-hidden="true">👥</span> Farmers Directory</a>
+            <a @class(['active' => $directory]) href="{{ route('farmers.directory') }}"><span aria-hidden="true">👥</span> Farmers Masterlist</a>
             @if (count($visible)) <span class="group-label">SECTORS</span> @endif
             @foreach ($visible as $key => [$label, $icon])
+                @continue($key === 'farmers')
                 @continue($key === 'vaccine' && isset($visible['livestock']))
                 @continue($key === 'fertilizer' && (isset($visible['rice']) || isset($visible['corn'])))
                 @if ($key === 'vaccine')
@@ -68,7 +70,7 @@
             @endforeach
         </nav>
         <div class="account"><span class="avatar">{{ mb_strtoupper(mb_substr($user->name, 0, 1)) }}</span><div><strong>{{ $user->name }}</strong><small>{{ $isHead ? 'Agriculture Head' : ($modules[$user->sector][0] ?? 'Employee') }}</small></div></div>
-        <form class="logout" method="post" action="{{ route('logout') }}">@csrf <button class="quiet">Sign out</button></form>
+        <form class="logout" method="post" action="{{ route('logout') }}" data-auth-form>@csrf <button class="quiet">Sign out</button></form>
     </aside>
     <main>
         <header class="topbar">
@@ -190,6 +192,7 @@
                     @endif
                     <form class="filters" method="get">
                         @if ($tilapiaRegister)<input type="hidden" name="register" value="tilapia">@endif
+                        @if ($sector === 'farmers')<input type="hidden" name="profiles" value="1">@endif
                         @if ($livestockRegister !== null)
                             <input type="hidden" name="register" value="{{ $livestockRegister }}">
                             @if ($livestockRegister === 'vaccination')
@@ -244,7 +247,7 @@
                             $recordColumns += ['gross_income' => ['Gross income (PHP)'], 'expenses' => $expenses, 'net_income' => ['Net income (PHP)']];
                             if ($crop !== null) {
                                 unset($recordColumns['crop']);
-                                $recordColumns['commodity'][0] = $crop === 'vegetable' ? 'Commodity' : 'Variety of '.strtolower($cropLabels[$crop]);
+                                $recordColumns['commodity'][0] = $modules['high-value-crops'][5][$crop];
                                 if ($crop !== 'banana') {
                                     unset($recordColumns['expansion']);
                                 }
@@ -261,7 +264,7 @@
                             ] + ($barangay === '' ? ['area' => ['Barangay']] : []);
                         }
                     @endphp
-                    <div class="table-wrap"><table>
+                    <div class="table-wrap" tabindex="0" role="region" aria-label="{{ $title }} records"><table>
                         <thead><tr>@unless ($monthlyAccomplished)<th>{{ $poultryTotals !== null ? 'No.' : 'Date' }}</th>@endunless @foreach ($recordColumns as [$label])<th>{{ $label }}</th>@endforeach @if ($canWrite)<th>Action</th>@endif</tr></thead>
                         <tbody>
                         @forelse ($records as $entry)
@@ -289,7 +292,7 @@
                 </section>
                 @if ($canWrite)
                     <dialog id="new-record">
-                        <h2>New {{ strtolower($modules[$sector][0]) }} record</h2>
+                        <h2>{{ $crop !== null && !$monthlyAccomplished ? 'New '.$cropLabels[$crop].' production record' : 'New '.strtolower($modules[$sector][0]).' record' }}</h2>
                         <form method="post" action="{{ route('records.store', $sector) }}" data-record class="stack">
                             @csrf <input type="hidden" name="submission_id" value="{{ Illuminate\Support\Str::uuid() }}">
                             @include($tilapiaRegister ? 'agriculture-tilapia-fields' : 'agriculture-fields', ['entry' => null])
@@ -298,7 +301,7 @@
                     </dialog>
                     @foreach ($records as $entry)
                         <dialog id="record-{{ $entry->id }}">
-                            <h2>Edit record</h2>
+                            <h2>{{ $crop !== null && !$monthlyAccomplished ? 'Edit '.$cropLabels[$crop].' production record' : 'Edit record' }}</h2>
                             <form method="post" action="{{ route('records.update', [$sector, $entry->id]) }}" data-record class="stack">
                                 @csrf @method('PATCH') <input type="hidden" name="revision" value="{{ $entry->updated_at }}">
                                 @php
@@ -314,7 +317,7 @@
 
             @if (isset($recent))
                 <section class="panel data"><div class="section-head"><h2>Recent Activity</h2></div>
-                    <div class="table-wrap"><table><thead><tr><th>Record</th><th>Sector</th><th>Date</th></tr></thead><tbody>
+                    <div class="table-wrap" tabindex="0" role="region" aria-label="Recent activity"><table><thead><tr><th>Record</th><th>Sector</th><th>Date</th></tr></thead><tbody>
                         @forelse ($recent as $entry)<tr><td>{{ json_decode($entry->details, true)['name'] }}</td><td><a href="{{ route('sector', $entry->sector) }}">{{ $modules[$entry->sector][0] }}</a></td><td>{{ $entry->record_date }}</td></tr>
                         @empty <tr><td colspan="3" class="empty">Activity will appear after the first record is saved.</td></tr>@endforelse
                     </tbody></table></div>
@@ -331,7 +334,7 @@
                     </section>
                 @endif
                 <section class="panel data"><div class="section-head"><h2>{{ $head ? 'Sector access requests' : 'My requests' }}</h2></div>
-                    <div class="table-wrap"><table><thead><tr><th>Employee</th><th>Sector</th><th>Reason</th><th>Status</th>@if ($head)<th>Action</th>@endif</tr></thead><tbody>
+                    <div class="table-wrap" tabindex="0" role="region" aria-label="Access requests"><table><thead><tr><th>Employee</th><th>Sector</th><th>Reason</th><th>Status</th>@if ($head)<th>Action</th>@endif</tr></thead><tbody>
                         @forelse ($requests as $item)
                             <tr><td>{{ $item->name }}@if ($head)<br><small>{{ $item->email }}</small>@endif</td><td>{{ $modules[$item->sector][0] }}</td><td>{{ $item->reason }}</td><td><span class="badge {{ $item->status }}">{{ ucfirst($item->status) }}</span></td>
                             @if ($head)<td>
@@ -358,5 +361,6 @@
     <div class="dialog-actions"><button type="button" class="secondary" data-close>Close</button><button type="button" data-retry>Sync now</button></div>
 </dialog>
 <div class="toast" role="status" hidden></div>
+@include('agriculture-auth-loading', ['message' => 'Signing out…'])
 </body>
 </html>
