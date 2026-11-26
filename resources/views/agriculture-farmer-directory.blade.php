@@ -40,6 +40,26 @@
                 </tbody>
             </table>
         </div>
+        @if ($farmer['restricted'] !== [])
+            <h3>History requiring access</h3>
+            <ul class="stack">
+                @foreach ($farmer['restricted'] as $sector => $pending)
+                    <li>
+                        {{ $modules[$sector][0] }}
+                        @if ($pending)
+                            <span class="badge pending">Request pending</span>
+                        @else
+                            <form method="post" action="{{ route('access.request') }}">
+                                @csrf
+                                <input type="hidden" name="sector" value="{{ $sector }}">
+                                <input type="hidden" name="reason" value="Review cross-sector service history in the Farmers Directory">
+                                <button type="submit" class="secondary" aria-label="Request access to {{ $modules[$sector][0] }}">Request access</button>
+                            </form>
+                        @endif
+                    </li>
+                @endforeach
+            </ul>
+        @endif
         <div class="dialog-actions"><button type="button" class="secondary" data-close>Close</button></div>
     </dialog>
 @endforeach

@@ -317,18 +317,12 @@ class AgricultureController extends Controller
 
         foreach ($records as $record) {
             $details = json_decode($record->details, true);
-            $name = Str::squish(match ($record->sector) {
-                'livestock', 'vaccine', 'rice' => $details['farmer_name'] ?? '',
-                default => $details['name'] ?? '',
-            });
-            $normalizedName = Str::lower($name);
-            if ($name === '' || ! str_contains($normalizedName, $needle)) {
+            [$name, $key] = $this->farmerIdentity($record->sector, $details);
+            if ($name === '' || ! str_contains(Str::lower($name), $needle)) {
                 continue;
             }
 
-            $area = Str::lower(Str::squish($details['barangay'] ?? $details['area'] ?? ''));
-            $key = $normalizedName."\n".$area;
-            $directory[$key] ??= ['name' => $name, 'history' => []];
+            $directory[$key] ??= ['name' => $name, 'history' => [], 'restricted' => []];
             $directory[$key]['history'][] = [
                 'date' => $record->record_date,
                 'sector' => $record->sector,
@@ -361,17 +355,41 @@ class AgricultureController extends Controller
 
         ksort($directory, SORT_NATURAL);
         $page = LengthAwarePaginator::resolveCurrentPage();
-        $entries = array_values(array_slice($directory, ($page - 1) * 15, 15));
+        $entries = array_slice($directory, ($page - 1) * 15, 15, true);
+        $restrictedSectors = array_diff_key(config('agriculture'), $visible);
+        if ($entries !== [] && $restrictedSectors !== []) {
+            $pending = DB::table('sector_requests')->where('user_id', $request->user()->id)
+                ->where('status', 'pending')->pluck('sector')->flip();
+            $restrictedRecords = $this->records()->whereIn('sector', array_keys($restrictedSectors))
+                ->select('id', 'sector', 'details->name as name', 'details->farmer_name as farmer_name',
+                    'details->area as area', 'details->barangay as barangay')->lazyById();
+            foreach ($restrictedRecords as $record) {
+                [$name, $key] = $this->farmerIdentity($record->sector, (array) $record);
+                if ($name !== '' && isset($entries[$key])) {
+                    $entries[$key]['restricted'][$record->sector] = $pending->has($record->sector);
+                }
+            }
+        }
         foreach ($entries as &$farmer) {
             $farmer['history'] = collect($farmer['history'])->sortByDesc('date')->values();
         }
         unset($farmer);
 
-        $farmerList = new LengthAwarePaginator($entries, count($directory), 15, $page, ['path' => $request->url()]);
+        $farmerList = new LengthAwarePaginator(array_values($entries), count($directory), 15, $page, ['path' => $request->url()]);
         $farmerList->withQueryString();
 
         return response()->view('agriculture', compact('visible', 'farmerList', 'search'))
             ->header('Cache-Control', 'private, no-store');
+    }
+
+    private function farmerIdentity(string $sector, array $details): array
+    {
+        $name = Str::squish(in_array($sector, ['livestock', 'vaccine', 'rice'], true)
+            ? ($details['farmer_name'] ?? '')
+            : ($details['name'] ?? ''));
+        $area = Str::lower(Str::squish($details['barangay'] ?? $details['area'] ?? ''));
+
+        return [$name, Str::lower($name)."\n".$area];
     }
 
     public function access(Request $request): View

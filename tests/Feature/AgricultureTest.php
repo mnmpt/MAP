@@ -202,7 +202,16 @@ class AgricultureTest extends TestCase
 
         $this->actingAs($staff)->get('/farmers/directory')->assertOk()
             ->assertSee('Fingerling distribution')->assertSee('1 entry')
-            ->assertDontSee('Fertilizer collected')->assertDontSee('Farmer registration');
+            ->assertSee('Request access to Fertilizer / Abuno')
+            ->assertDontSee('Fertilizer collected')->assertDontSee('2026-11-05')->assertDontSee('Farmer registration');
+        $this->from('/farmers/directory')->post('/access', ['sector' => 'fertilizer', 'reason' => 'Review farmer history'])
+            ->assertRedirect('/farmers/directory');
+        $this->get('/farmers/directory')->assertOk()->assertSee('Request pending')->assertDontSee('Fertilizer collected');
+        $grant = DB::table('sector_requests')->value('id');
+        $this->actingAs($head)->patch('/access/'.$grant, ['status' => 'approved'])->assertRedirect();
+        $this->actingAs($staff)->get('/farmers/directory')->assertOk()
+            ->assertSee('Fertilizer collected')->assertSee('2026-11-05')
+            ->assertDontSee('Request access to Fertilizer / Abuno')->assertDontSee('09123456789');
     }
 
     public function test_corn_dashboard_calculates_totals_for_the_selected_planting_month(): void
