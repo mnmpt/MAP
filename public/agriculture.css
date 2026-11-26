@@ -262,22 +262,33 @@ dialog::backdrop { background: #040a07bc; }
 .login-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(min-content, 1fr);
+    align-items: stretch;
+    gap: clamp(1rem, 3vw, 3rem);
+    padding: clamp(1.25rem, 4vw, 4rem);
     min-height: 100vh;
     min-height: 100dvh;
-    background: url("map-farm.jpg") center / cover fixed;
+    background: linear-gradient(90deg, #10271922, #10271966), url("map-farm.jpg") center / cover fixed;
 }
 
 .login-card {
     --ink: #233629;
     --muted: #505e50;
     width: 100%;
-    padding: clamp(2rem, 6vw, 5.5rem) clamp(1.5rem, 6vw, 5rem);
-    align-content: center;
-    justify-items: center;
-    background: rgb(251 248 239 / 84%);
+    max-width: 33rem;
+    min-height: 0;
+    justify-self: center;
+    align-self: center;
+    padding: clamp(.9rem, 3.5dvh, 3.2rem) clamp(1rem, 3.75vw, 3.2rem);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: linear-gradient(155deg, rgb(255 252 242 / 91%), rgb(245 244 230 / 81%));
     backdrop-filter: blur(4px);
     color: var(--ink);
-    border-radius: 1.5rem 0 0 1.5rem;
+    border: 1px solid #fff8;
+    border-radius: 1.5rem;
+    box-shadow: 0 1.5rem 4rem #10201655;
     text-align: center;
     gap: .65rem;
 }
@@ -286,13 +297,24 @@ dialog::backdrop { background: #040a07bc; }
     flex-direction: column;
     gap: .35rem;
     font: 700 2rem/1.2 Georgia, serif;
-    margin-bottom: 1.35rem;
+    margin-bottom: .8rem;
+}
+
+.login-mark {
+    display: grid;
+    place-items: center;
+    width: 4.65rem;
+    height: 4.65rem;
+    margin-bottom: .15rem;
+    border: 1px solid #a6b69b;
+    border-radius: 1.25rem;
+    background: #e3ecd8;
 }
 
 .login-card .map-logo {
     --map-logo-color: #355f3f;
-    width: 4.75rem;
-    height: 4.75rem;
+    width: 3.65rem;
+    height: 3.65rem;
 }
 
 .login-card h1 {
@@ -312,9 +334,20 @@ dialog::backdrop { background: #040a07bc; }
 
 .login-card form, .login-card .notice { width: min(100%, 25rem); text-align: left; }
 .login-card form { gap: 1rem; margin-top: 1rem; }
-.login-card :is(input, select) { min-height: 3rem; background: #fffdf8; border-color: #a0aaa0; }
-.login-switch a { color: #294e33; font-weight: 700; }
-.login-card button { width: 100%; min-height: 3rem; background: #294e33; color: #fff; }
+.login-card-registration form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: .65rem .8rem;
+}
+.login-card-registration form :is(.login-email, button) { grid-column: 1 / -1; }
+.login-card-registration .brand { margin-bottom: .1rem; }
+.login-card-registration .login-mark { width: 3.4rem; height: 3.4rem; }
+.login-card-registration .map-logo { width: 2.7rem; height: 2.7rem; }
+.login-card :is(input, select) { min-height: 3.1rem; background: #fffdf8; border-color: #9ca79c; border-radius: .65rem; }
+.login-card :is(input, select):focus { border-color: #41664b; }
+.login-switch { margin-top: .5rem; }
+.login-switch a { color: #294e33; font-weight: 700; text-decoration: none; }
+.login-card button { width: 100%; min-height: 3.1rem; background: #294e33; color: #fff; border-radius: .65rem; }
 .login-card .notice.error { background: #f7e3dd; color: #802f29; }
 .login-card :focus-visible { outline-color: #8d5c17; }
 
@@ -322,11 +355,16 @@ dialog::backdrop { background: #040a07bc; }
     display: grid;
     align-items: end;
     justify-items: start;
-    padding: clamp(1.5rem, 5vw, 4rem);
+    padding: 0;
     color: #fffdf3;
-    background: linear-gradient(0deg, #0b1b12ed, transparent 68%);
 }
 
+.login-office {
+    padding: clamp(1rem, 3vw, 2rem);
+    border: 1px solid #e1edd34d;
+    border-radius: 1rem;
+    background: #102719db;
+}
 .login-scene span { color: var(--yellow); font-weight: 750; }
 .login-scene p {
     max-width: 16ch;
@@ -335,12 +373,34 @@ dialog::backdrop { background: #040a07bc; }
 }
 
 @media (max-width: 700px) {
-    .login-layout { grid-template-columns: minmax(0, 1fr); background-attachment: scroll; }
-    .login-card { border-radius: 0; }
-    .login-scene { min-height: 12rem; }
+    .login-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(min-content, 1fr); background-attachment: scroll; }
+    .login-scene { width: min(100%, 33rem); justify-self: center; }
+    .login-office { padding: .8rem 1rem; }
+    .login-scene p { max-width: none; font-size: 1.35rem; }
     .banner-overview {
         background-image: linear-gradient(90deg, #0c1711f5, #0c1711aa), url("map-farm.jpg");
     }
+}
+
+@media (max-width: 700px) and (max-height: 700px) {
+    .login-layout { grid-template-rows: minmax(min-content, 1fr); }
+    .login-scene { display: none; }
+}
+
+@media (max-height: 600px) {
+    .login-layout { padding-block: .65rem; }
+    .login-card .brand { margin-bottom: 0; }
+    .login-mark { width: 2.75rem; height: 2.75rem; }
+    .login-card .map-logo { width: 2.25rem; height: 2.25rem; }
+    .login-card form { margin-top: .25rem; gap: .55rem; }
+}
+
+@media (max-height: 520px) {
+    .login-card-registration { gap: .35rem; padding-block: .7rem; }
+    .login-card-registration .login-mark { display: none; }
+    .login-card-registration :is(input, select, button) { min-height: 2.35rem; padding-block: .35rem; }
+    .login-card-registration h1::after { margin-top: .35rem; }
+    .login-card-registration .login-switch { margin-top: .15rem; }
 }
 
 :focus-visible {

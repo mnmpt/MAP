@@ -4,15 +4,18 @@
 <body class="login">
 <main class="login-layout">
     <aside class="login-scene" aria-label="LGU Sulop">
-        <div>
+        <div class="login-office">
             <span>LGU Sulop</span>
             <p>Municipal Agriculture Office</p>
             <small>Davao del Sur, Philippines</small>
         </div>
     </aside>
-    <section class="login-card" aria-labelledby="sign-in-title">
-        <div class="brand"><span class="map-logo" aria-hidden="true"></span><span>MAP<small>Management of Agriculture Production</small></span></div>
-        <h1 id="sign-in-title">{{ isset($sectors) ? 'Employee registration' : 'Employee sign in' }}</h1>
+    <section @class(['login-card', 'login-card-registration' => isset($sectors)]) aria-labelledby="sign-in-title">
+        <div class="brand">
+            <span class="login-mark"><span class="map-logo" aria-hidden="true"></span></span>
+            <span>MAP<small>Management of Agriculture Production</small></span>
+        </div>
+        <h1 id="sign-in-title">{{ isset($sectors) ? 'Employee registration' : 'Sign In' }}</h1>
         <p>{{ isset($sectors) ? 'Request a sector. The Agriculture Head will review your registration.' : 'Use your LGU Sulop employee account.' }}</p>
         @if (session('notice')) <div class="notice" role="status">{{ session('notice') }}</div> @endif
         @if ($errors->any()) <div class="notice error" role="alert">{{ $errors->first() }}</div> @endif
@@ -29,7 +32,7 @@
                     </select>
                 </label>
             @endisset
-            <label>Email address <input type="email" name="email" value="{{ old('email') }}" autocomplete="username" required></label>
+            <label class="login-email">Email address <input type="email" name="email" value="{{ old('email') }}" autocomplete="username" required></label>
             @isset($sectors)
                 <label>Password <input type="password" name="password" autocomplete="new-password" minlength="12" maxlength="72" required><small>Use at least 12 characters.</small></label>
                 <label>Confirm password <input type="password" name="password_confirmation" autocomplete="new-password" required></label>

@@ -39,7 +39,12 @@
             <a @class(['active' => $directory]) href="{{ route('farmers.directory') }}"><span aria-hidden="true">👥</span> Farmers Directory</a>
             @if (count($visible)) <span class="group-label">SECTORS</span> @endif
             @foreach ($visible as $key => [$label, $icon])
-                <a @class(['active' => ($sector ?? null) === $key && !$tilapiaRegister && $livestockRegister === null && $crop === null && !$monthlyAccomplished]) href="{{ route('sector', $key) }}"><span aria-hidden="true">{{ $icon }}</span>{{ $label }}</a>
+                @continue($key === 'vaccine' && isset($visible['livestock']))
+                @continue($key === 'fertilizer' && (isset($visible['rice']) || isset($visible['corn'])))
+                @if ($key === 'vaccine')
+                    <span class="group-label">Poultry &amp; Livestock</span>
+                @endif
+                <a @class(['subnav' => $key === 'vaccine', 'active' => ($sector ?? null) === $key && !$tilapiaRegister && $livestockRegister === null && $crop === null && !$monthlyAccomplished]) href="{{ route('sector', $key) }}"><span aria-hidden="true">{{ $icon }}</span>{{ $label }}</a>
                 @if ($key === 'fisheries')
                     <a @class(['subnav', 'active' => $tilapiaRegister]) href="{{ route('sector', ['sector' => 'fisheries', 'register' => 'tilapia']) }}">Tilapia Dispersal</a>
                 @elseif ($key === 'corn')
@@ -48,11 +53,17 @@
                     @foreach ($livestockRegisters as $registerKey => [$registerLabel])
                         <a @class(['subnav', 'active' => $livestockRegister === $registerKey]) href="{{ route('sector', ['sector' => $key, 'register' => $registerKey]) }}">{{ $registerLabel }}</a>
                     @endforeach
+                    @if (isset($visible['vaccine']))
+                        <a @class(['subnav', 'active' => ($sector ?? null) === 'vaccine']) href="{{ route('sector', 'vaccine') }}">Pet Vaccination</a>
+                    @endif
                 @elseif ($key === 'high-value-crops')
                     @foreach ($cropLabels as $cropKey => $cropLabel)
                         <a @class(['subnav', 'active' => $crop === $cropKey && !$monthlyAccomplished]) href="{{ route('sector', ['sector' => $key, 'crop' => $cropKey]) }}">{{ $cropLabel }} Production Report</a>
                     @endforeach
                     <a @class(['subnav', 'active' => $monthlyAccomplished]) href="{{ route('sector', ['sector' => $key, 'report' => 'monthly-accomplished']) }}">Monthly Accomplished Report</a>
+                @endif
+                @if (in_array($key, ['rice', 'corn'], true) && isset($visible['fertilizer']))
+                    <a @class(['subnav', 'active' => ($sector ?? null) === 'fertilizer']) href="{{ route('sector', 'fertilizer') }}">Fertilizer / Abuno</a>
                 @endif
             @endforeach
         </nav>

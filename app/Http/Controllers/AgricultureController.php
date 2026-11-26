@@ -199,7 +199,7 @@ class AgricultureController extends Controller
             );
         }
         $records = $query->orderByDesc('record_date')->orderByDesc('id')->paginate(15)->withQueryString();
-        $canWrite = in_array($request->user()->sector, ['head', $sector], true);
+        $canWrite = $this->canWriteSector($request->user(), $sector);
 
         return view('agriculture', compact('visible', 'summary', 'sector', 'records', 'canWrite', 'year', 'quarter', 'previous', 'search', 'plantingMonth', 'plantingTotals', 'tilapiaRegister', 'crop', 'barangay', 'monthlyAccomplished', 'livestockRegister', 'poultryTotals'));
     }
@@ -455,6 +455,12 @@ class AgricultureController extends Controller
         }
 
         $approved = DB::table('sector_requests')->where('user_id', $user->id)->where('status', 'approved')->pluck('sector')->all();
+        if ($user->sector === 'livestock') {
+            $approved[] = 'vaccine';
+        }
+        if (in_array($user->sector, ['rice', 'corn'], true)) {
+            $approved[] = 'fertilizer';
+        }
 
         return array_intersect_key($sectors, array_flip([$user->sector ?? '', ...$approved]));
     }
@@ -462,7 +468,13 @@ class AgricultureController extends Controller
     private function authorizeWrite(Request $request, string $sector): void
     {
         abort_unless(isset(config('agriculture')[$sector]), 404);
-        abort_unless(in_array($request->user()->sector, ['head', $sector], true), 403);
+        abort_unless($this->canWriteSector($request->user(), $sector), 403);
+    }
+
+    private function canWriteSector(User $user, string $sector): bool
+    {
+        return in_array($user->sector, ['head', $sector], true)
+            || ($user->sector === 'livestock' && $sector === 'vaccine');
     }
 
     private function records(): Builder

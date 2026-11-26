@@ -13,6 +13,31 @@ class AgricultureTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_rice_and_corn_staff_can_view_fertilizer_records(): void
+    {
+        foreach (['rice' => 'Rice Production', 'corn' => 'Corn Program'] as $sector => $label) {
+            $this->actingAs(User::factory()->create(['sector' => $sector]))
+                ->get('/sector/'.$sector)->assertOk()
+                ->assertSeeTextInOrder([$label, 'Fertilizer / Abuno']);
+            $this->get('/sector/fertilizer')->assertOk()->assertDontSee('New record');
+            $this->postJson('/sector/fertilizer')->assertForbidden();
+        }
+    }
+
+    public function test_livestock_staff_can_manage_pet_vaccination_from_their_sidebar(): void
+    {
+        $staff = User::factory()->create(['sector' => 'livestock']);
+        $this->actingAs($staff)->get('/sector/livestock')->assertOk()
+            ->assertSeeTextInOrder(['Poultry & Livestock', 'List of Poultry Farms', 'Pet Vaccination']);
+        $this->postJson('/sector/vaccine', [
+            'submission_id' => Str::uuid()->toString(), 'record_date' => '2026-11-26',
+            'name' => 'Test pet', 'species' => 'Dog', 'vaccine' => 'Rabies', 'quantity' => 1, 'area' => 'North',
+        ])->assertOk();
+        $this->get('/sector/vaccine')->assertOk()->assertSee('Test pet');
+        $this->actingAs(User::factory()->create(['sector' => 'corn']))
+            ->get('/sector/vaccine')->assertForbidden();
+    }
+
     public function test_registration_requires_head_approval_before_sector_sign_in(): void
     {
         $this->get('/login')->assertOk()->assertSee('Register for a sector');
