@@ -13,6 +13,71 @@ class AgricultureTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_offline_workspace_only_prepares_blank_forms_the_employee_can_write(): void
+    {
+        $this->get('/offline')->assertRedirect('/login');
+        $staff = User::factory()->create(['sector' => 'livestock']);
+        $this->actingAs($staff)->get('/offline')->assertOk()
+            ->assertHeader('X-MAP-Offline-Workspace', (string) $staff->id)
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertSee('data-draft-form="poultry-farms"', false)
+            ->assertSee('data-draft-form="vaccination"', false)
+            ->assertSee('data-draft-form="vaccine"', false)
+            ->assertDontSee('data-draft-form="corn"', false)
+            ->assertDontSee('name="_token"', false);
+
+        $this->actingAs(User::factory()->create(['sector' => 'head']))->get('/offline')->assertOk()
+            ->assertSee('data-draft-form="tilapia"', false)
+            ->assertSee('data-draft-form="banana"', false)
+            ->assertSee('data-draft-form="corn"', false);
+    }
+
+    public function test_statistical_charts_follow_the_selected_period_and_sector_permissions(): void
+    {
+        $rice = User::factory()->create(['sector' => 'rice']);
+        $this->actingAs($rice)->postJson('/sector/rice', [
+            'submission_id' => Str::uuid()->toString(), 'record_date' => '2026-04-01',
+            'name' => 'Test plot', 'area' => 'North', 'hectares' => 1, 'quantity' => 275,
+        ])->assertOk();
+        $this->get('/reports?year=2026&quarter=2')->assertOk()
+            ->assertSee('Rice harvest by month')->assertDontSee('Corn area planted by month')
+            ->assertViewHas('charts.rice.values', ['Apr' => 275.0, 'May' => 0.0, 'Jun' => 0.0]);
+        $this->get('/reports?year=2026&quarter=1&sector=rice')->assertOk()->assertSee('No records for this period.');
+        $this->get('/reports?sector=corn')->assertForbidden();
+
+        $this->actingAs(User::factory()->create(['sector' => 'head']));
+        foreach (['Collected' => 15, 'Pending' => 5] as $status => $quantity) {
+            $this->postJson('/sector/fertilizer', [
+                'submission_id' => Str::uuid()->toString(), 'record_date' => '2026-04-01',
+                'name' => 'Test farmer', 'area' => 'North', 'type' => 'Compost',
+                'quantity' => $quantity, 'status' => $status, 'collected_at' => '2026-04-02',
+            ])->assertOk();
+        }
+        $this->get('/reports?year=2026&quarter=2')->assertOk()
+            ->assertSee('Corn area planted by month')->assertSee('Fertilizer collection status')
+            ->assertSee('75 percent collected');
+    }
+
+    public function test_head_overview_counts_unique_farmers_from_all_sectors_and_dates(): void
+    {
+        $this->actingAs(User::factory()->create(['sector' => 'head']));
+        $this->postJson('/sector/corn', [
+            'submission_id' => Str::uuid()->toString(), 'record_date' => '2025-11-01',
+            'name' => 'Example Farmer', 'area' => 'North', 'technician' => 'Test Technician', 'gmo_yellow' => 1,
+        ])->assertOk();
+
+        $this->get('/?year=2026')->assertOk()
+            ->assertViewHas('summary.farmers', ['Total farmers (all time)' => 1])
+            ->assertViewHas('summary', fn (array $summary): bool => ! isset($summary['vaccine']) && ! isset($summary['fertilizer']))
+            ->assertSee('Pet Vaccination')->assertSee('Fertilizer / Abuno');
+
+        $this->postJson('/sector/fisheries', [
+            'submission_id' => Str::uuid()->toString(), 'record_date' => '2026-11-01',
+            'name' => 'example  farmer', 'area' => 'South', 'species' => 'Tilapia', 'quantity' => 10, 'hectares' => 1,
+        ])->assertOk();
+        $this->get('/')->assertOk()->assertViewHas('summary.farmers', ['Total farmers (all time)' => 1]);
+    }
+
     public function test_rice_and_corn_staff_can_view_fertilizer_records(): void
     {
         foreach (['rice' => 'Rice Production', 'corn' => 'Corn Program'] as $sector => $label) {

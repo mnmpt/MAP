@@ -11,6 +11,7 @@ Route::post('/logout', [AgricultureController::class, 'logout'])->middleware('au
 Route::middleware(['auth', 'can:access-workspace'])->controller(AgricultureController::class)->group(function () {
     Route::get('/', 'index')->name('dashboard');
     Route::get('/sync/session', 'syncSession')->name('sync.session');
+    Route::get('/offline', 'offlineWorkspace')->name('offline.workspace');
     Route::get('/sector/{sector}', 'sector')->name('sector');
     Route::post('/sector/{sector}', 'store')->name('records.store');
     Route::patch('/sector/{sector}/{record}', 'update')->whereNumber('record')->name('records.update');

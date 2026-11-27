@@ -3,11 +3,23 @@ const prefix = 'agrioffice-record:' + document.body.dataset.user + ':';
 const syncLabel = document.querySelector('[data-sync-label]');
 const items = document.querySelector('[data-sync-items]');
 const toast = document.querySelector('.toast');
+const offlineWorkspace = document.body.hasAttribute('data-offline-workspace');
 let busy = false;
 let toastTimer;
 
 function queued() {
-    return Object.keys(localStorage).filter(key => key.startsWith(prefix)).map(key => [key, JSON.parse(localStorage.getItem(key))]);
+    try {
+        return Object.keys(localStorage).filter(key => key.startsWith(prefix)).flatMap(key => {
+            try {
+                const entry = JSON.parse(localStorage.getItem(key));
+                return entry?.fields && entry.url ? [[key, entry]] : [];
+            } catch {
+                return [];
+            }
+        });
+    } catch {
+        return [];
+    }
 }
 
 function notify(message) {
@@ -23,24 +35,49 @@ function showState() {
     syncLabel.textContent = (connected ? 'Online' : 'Offline') + (entries.length ? ' · ' + entries.length + ' queued' : '');
     syncLabel.parentElement.classList.toggle('offline', !connected);
     items.replaceChildren();
-    if (!entries.length) items.textContent = 'No queued entries.';
+    if (!entries.length) items.textContent = 'No saved drafts.';
+    const editing = new Map(Array.from(document.querySelectorAll('form[data-editing-draft]')).map(form => [form.dataset.editingDraft, form]));
     for (const [key, entry] of entries) {
         const row = document.createElement('div');
         row.className = 'queue-item';
         const description = document.createElement('span');
-        description.textContent = entry.error || 'Waiting to sync';
+        const title = entry.fields.name || entry.fields.farmer_name || entry.fields.first_name || 'Record draft';
+        description.textContent = title + ' · ' + (entry.error || 'Waiting to sync');
+        const editForm = offlineWorkspace && !entry.fields._method
+            ? Array.from(document.querySelectorAll('[data-draft-form]')).find(form => form.dataset.draftForm ===
+                (entry.fields.register || entry.fields.crop || (entry.fields.transaction ? 'tilapia' : new URL(entry.url, location.href).pathname.split('/').pop())))
+            : null;
+        if (editForm) {
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'secondary';
+            edit.textContent = 'Edit draft';
+            edit.disabled = busy || editing.has(key);
+            edit.addEventListener('click', () => {
+                editForm.dataset.editingDraft = key;
+                for (const [field, value] of Object.entries(entry.fields)) {
+                    const input = editForm.elements.namedItem(field);
+                    if (!input || input.type === 'hidden' && field !== 'submission_id') continue;
+                    if (input.type === 'checkbox') input.checked = input.value === value;
+                    else input.value = value ?? '';
+                }
+                editForm.closest('dialog').showModal();
+            });
+            row.append(description, edit);
+        }
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'secondary';
         remove.textContent = 'Discard';
-        remove.disabled = busy;
+        remove.disabled = busy || editing.has(key);
         remove.addEventListener('click', () => {
             if (confirm('Discard this unsynced entry?')) {
                 localStorage.removeItem(key);
                 showState();
             }
         });
-        row.append(description, remove);
+        if (!editForm) row.append(description);
+        row.append(remove);
         items.append(row);
     }
 }
@@ -53,7 +90,9 @@ async function currentSession() {
 }
 
 async function send(entry, token) {
-    const response = await fetch(entry.url, {
+    const url = new URL(entry.url, location.href);
+    if (url.origin !== location.origin) return {status: 422, error: 'Invalid draft destination.'};
+    const response = await fetch(url, {
         method: entry.fields._method || 'POST',
         headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': token},
         body: JSON.stringify(entry.fields),
@@ -75,7 +114,8 @@ async function sync() {
             return;
         }
         for (const [key, entry] of queued()) {
-            if (entry.error || !localStorage.getItem(key)) continue;
+            if (entry.error || !localStorage.getItem(key) || Array.from(document.querySelectorAll('form[data-editing-draft]'))
+                .some(form => form.dataset.editingDraft === key)) continue;
             const result = await send(entry, session.token);
             if (!result.error) {
                 localStorage.removeItem(key);
@@ -180,7 +220,15 @@ if (sidebarToggle) {
 }
 
 document.querySelectorAll('[data-open]').forEach(button => {
-    button.addEventListener('click', () => document.getElementById(button.dataset.open).showModal());
+    button.addEventListener('click', () => {
+        const dialog = document.getElementById(button.dataset.open);
+        const form = dialog.querySelector('[data-draft-form]');
+        if (form) {
+            form.reset();
+            form.elements.record_date.value = new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Manila'}).format(new Date());
+        }
+        dialog.showModal();
+    });
 });
 document.querySelectorAll('[data-close]').forEach(button => {
     button.addEventListener('click', () => button.closest('dialog').close());
@@ -188,6 +236,13 @@ document.querySelectorAll('[data-close]').forEach(button => {
 document.querySelector('[data-retry]').addEventListener('click', sync);
 
 document.querySelectorAll('[data-record]').forEach(form => {
+    if (form.dataset.draftForm) {
+        form.closest('dialog').addEventListener('close', () => {
+            delete form.dataset.editingDraft;
+            form.reset();
+            showState();
+        });
+    }
     const grossOutput = form.querySelector('[data-crop-gross]');
     if (grossOutput) {
         const netOutput = form.querySelector('[data-crop-net]');
@@ -211,10 +266,11 @@ document.querySelectorAll('[data-record]').forEach(form => {
         const token = fields._token;
         delete fields._token;
         const entry = {url: form.action, fields};
-        const queueKey = prefix + crypto.randomUUID();
+        const queueKey = form.dataset.editingDraft || prefix + crypto.randomUUID();
+        if (fields.submission_id === '') fields.submission_id = crypto.randomUUID();
         button.disabled = true;
         try {
-            if (navigator.onLine) {
+            if (navigator.onLine && !offlineWorkspace) {
                 let result;
                 try {
                     result = await send(entry, token);
@@ -226,8 +282,10 @@ document.querySelectorAll('[data-record]').forEach(form => {
                         location.reload();
                         return;
                     }
-                    notify(result.error);
-                    return;
+                    if (result.status < 500) {
+                        notify(result.error);
+                        return;
+                    }
                 }
             }
             localStorage.setItem(queueKey, JSON.stringify(entry));
@@ -236,8 +294,12 @@ document.querySelectorAll('[data-record]').forEach(form => {
                 form.elements.submission_id.value = crypto.randomUUID();
             }
             form.closest('dialog').close();
-            notify('Saved on this device. It will sync when the server is reachable.');
+            notify('Draft saved on this device. It will sync when the server is reachable.');
             showState();
+            if (offlineWorkspace) {
+                delete form.dataset.editingDraft;
+                sync();
+            }
         } catch {
             notify('This device could not store the entry. Keep the form open and try again.');
         } finally {
@@ -252,3 +314,20 @@ window.addEventListener('storage', showState);
 showState();
 sync();
 setInterval(sync, 30000);
+
+const offlineStatus = document.querySelector('[data-offline-status]');
+if (offlineStatus && 'serviceWorker' in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register(document.body.dataset.workerUrl)
+        .then(() => navigator.serviceWorker.ready)
+        .then(registration => {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = ({data}) => {
+                offlineStatus.textContent = data.ready ? 'Ready to use offline.' : 'Could not prepare the offline workspace.';
+                channel.port1.close();
+            };
+            registration.active.postMessage({type: 'prepare-workspace', user: document.body.dataset.user}, [channel.port2]);
+        })
+        .catch(() => { offlineStatus.textContent = 'Offline workspace could not be prepared.'; });
+} else if (offlineStatus) {
+    offlineStatus.textContent = 'Offline reopening requires HTTPS or localhost.';
+}

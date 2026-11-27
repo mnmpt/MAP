@@ -104,6 +104,36 @@ class AgricultureController extends Controller
             ->header('Cache-Control', 'no-store');
     }
 
+    public function offlineWorkspace(Request $request): Response
+    {
+        $user = $request->user();
+        $modules = config('agriculture');
+        $forms = [];
+        foreach ($modules as $sector => [$label]) {
+            if (! $this->canWriteSector($user, $sector)) {
+                continue;
+            }
+            $forms[$sector] = ['sector' => $sector, 'label' => $label];
+            if ($sector === 'livestock') {
+                foreach ($modules['livestock'][4] as $register => [$registerLabel]) {
+                    $forms[$register] = ['sector' => $sector, 'label' => $registerLabel, 'register' => $register];
+                }
+            }
+            if ($sector === 'fisheries') {
+                $forms['tilapia'] = ['sector' => $sector, 'label' => 'Tilapia Dispersal'];
+            }
+            if ($sector === 'high-value-crops') {
+                foreach ($modules[$sector][4] as $crop => $cropLabel) {
+                    $forms[$crop] = ['sector' => $sector, 'label' => $cropLabel.' Production Report', 'crop' => $crop];
+                }
+            }
+        }
+
+        return response()->view('agriculture-offline', compact('user', 'forms', 'modules'))
+            ->header('Cache-Control', 'private, no-store')
+            ->header('X-MAP-Offline-Workspace', (string) $user->id);
+    }
+
     public function index(Request $request): View|RedirectResponse
     {
         $user = $request->user();
@@ -113,7 +143,18 @@ class AgricultureController extends Controller
 
         $visible = $this->visible($request);
         [$year, $quarter] = $this->period($request);
-        $summary = $this->summary(array_keys($visible), $year, $quarter);
+        $overviewSectors = array_diff(array_keys($visible), ['vaccine', 'fertilizer']);
+        $summary = $this->summary($overviewSectors, $year, $quarter);
+        $farmerNames = [];
+        $farmerRecords = $this->records()->whereIn('sector', array_keys($visible))
+            ->select('id', 'sector', 'details->name as name', 'details->farmer_name as farmer_name')->lazyById();
+        foreach ($farmerRecords as $record) {
+            [$name, $key] = $this->farmerIdentity($record->sector, (array) $record);
+            if ($name !== '') {
+                $farmerNames[$key] = true;
+            }
+        }
+        $summary['farmers'] = ['Total farmers (all time)' => count($farmerNames)];
         $previous = $this->previousRice($visible, $year, $quarter);
         $recent = $this->records()->whereIn('sector', array_keys($visible))->latest()->limit(6)->get();
 
@@ -297,7 +338,9 @@ class AgricultureController extends Controller
         $filters = $request->validate(['sector' => ['nullable', 'string', Rule::in(array_keys(config('agriculture')))], 'format' => 'nullable|in:pdf,docx']);
         $selected = $filters['sector'] ?? null;
         abort_if($selected !== null && ! isset($visible[$selected]), 403);
-        $summary = $this->summary($selected ? [$selected] : array_keys($visible), $year, $quarter);
+        $reportSectors = $selected ? [$selected] : array_keys($visible);
+        $records = $this->periodRecords($reportSectors, $year, $quarter);
+        $summary = $this->summarize($reportSectors, $records);
         $previous = $this->previousRice(array_intersect_key($visible, $summary), $year, $quarter);
         $format = $filters['format'] ?? null;
         $reportTitle = ($quarter ? 'Quarter '.$quarter.' · ' : 'Annual · ').$year;
@@ -309,7 +352,9 @@ class AgricultureController extends Controller
             return $this->pdfReport($reportTitle, $summary, $previous);
         }
 
-        return view('agriculture', compact('visible', 'summary', 'year', 'quarter', 'selected', 'previous', 'reportTitle'));
+        $charts = $this->reportCharts($reportSectors, $records, $summary, $year, $quarter);
+
+        return view('agriculture', compact('visible', 'summary', 'year', 'quarter', 'selected', 'previous', 'reportTitle', 'charts'));
     }
 
     public function farmerDirectory(Request $request): Response
@@ -595,18 +640,69 @@ class AgricultureController extends Controller
 
     private function summary(array $sectors, int $year, int $quarter): array
     {
+        return $this->summarize($sectors, $this->periodRecords($sectors, $year, $quarter));
+    }
+
+    private function periodRecords(array $sectors, int $year, int $quarter): Collection
+    {
         $start = Carbon::create($year, $quarter ? $quarter * 3 - 2 : 1, 1)->toDateString();
         $end = Carbon::parse($start)->addMonths($quarter ? 3 : 12)->toDateString();
+
+        return $this->records()->whereIn('sector', $sectors)
+            ->where(fn (Builder $query) => $query->where('sector', '!=', 'livestock')->orWhereNull('details->register'))
+            ->where('record_date', '>=', $start)->where('record_date', '<', $end)
+            ->get(['sector', 'record_date', 'details'])->groupBy('sector');
+    }
+
+    private function summarize(array $sectors, Collection $records): array
+    {
         $results = [];
         foreach ($sectors as $sector) {
-            $records = $this->records()->where('sector', $sector)
-                ->when($sector === 'livestock', fn (Builder $query) => $query->whereNull('details->register'))
-                ->where('record_date', '>=', $start)
-                ->where('record_date', '<', $end)->pluck('details')->map(fn (string $json) => json_decode($json, true));
-            $results[$sector] = ['Records' => $records->count()] + $this->metrics($sector, $records);
+            $details = $records->get($sector, collect())->pluck('details')->map(fn (string $json) => json_decode($json, true));
+            $results[$sector] = ['Records' => $details->count()] + $this->metrics($sector, $details);
         }
 
         return $results;
+    }
+
+    private function reportCharts(array $sectors, Collection $records, array $summary, int $year, int $quarter): array
+    {
+        $charts = [];
+        foreach ($sectors as $sector) {
+            $rows = $records->get($sector, collect());
+            $details = $rows->pluck('details')->map(fn (string $json) => json_decode($json, true));
+            [$title, $unit, $metric] = match ($sector) {
+                'rice' => ['Rice harvest by month', 'kg', 'Harvest (kg)'],
+                'corn' => ['Corn area planted by month', 'ha', 'Area planted (ha)'],
+                'livestock' => ['Livestock mortality rate by loading month', '%', 'Mortality rate'],
+                'fisheries' => ['Fingerlings distributed by month', 'fingerlings', 'Fingerlings distributed'],
+                'vaccine' => ['Pet vaccination doses by month', 'doses', 'Doses administered'],
+                'fertilizer' => ['Fertilizer collection status', 'bags', null],
+                'high-value-crops' => ['High Value Crops harvest by crop', 'kg', null],
+                'farmers' => ['Registered farmer profiles by type', 'profiles', null],
+            };
+            if ($metric !== null) {
+                $months = $rows->groupBy(fn (object $row) => (int) substr($row->record_date, 5, 2));
+                $firstMonth = $quarter ? $quarter * 3 - 2 : 1;
+                $values = [];
+                foreach (range($firstMonth, $firstMonth + ($quarter ? 2 : 11)) as $month) {
+                    $monthDetails = $months->get($month, collect())->pluck('details')->map(fn (string $json) => json_decode($json, true));
+                    $value = $this->metrics($sector, $monthDetails)[$metric];
+                    $values[Carbon::create($year, $month, 1)->format('M')] = $value === '—' ? null : (float) $value;
+                }
+            } else {
+                $values = match ($sector) {
+                    'fertilizer' => ['Collected' => $summary[$sector]['Bags collected'], 'Pending' => $summary[$sector]['Bags pending']],
+                    'high-value-crops' => collect(config('agriculture.high-value-crops')[4])
+                        ->mapWithKeys(fn (string $label, string $crop) => [$label => round($details->where('crop', $crop)->sum('quantity'), 3)])->all(),
+                    'farmers' => $details->countBy(fn (array $profile) => Str::headline(Str::lower(Str::squish($profile['type']))))
+                        ->sortDesc()->take(10)->all(),
+                };
+            }
+            $charts[$sector] = compact('title', 'unit', 'values');
+        }
+
+        return $charts;
     }
 
     private function metrics(string $sector, Collection $records): array

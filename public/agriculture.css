@@ -22,6 +22,8 @@ dialog{width:min(94vw,34rem);max-height:90vh;border:1px solid var(--line);border
 
 .sidebar nav .subnav { margin-inline-start: 1.25rem; font-size: .87rem; }
 .crop-income { padding: .57rem .7rem; border: 1px solid var(--line); border-radius: .45rem; background: var(--surface-raised); color: var(--green); font-variant-numeric: tabular-nums; }
+.offline-workspace { max-width: 68rem; }
+.offline-form-list { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: .8rem; }
 .sidebar[hidden], .sidebar-toggle[hidden] { display: none; }
 .sidebar {
     position: sticky;
@@ -230,6 +232,43 @@ dialog { max-height: calc(100dvh - 1.5rem); overflow-y: auto; }
 .corn-report tfoot, .data tfoot th { background: #22382a; color: var(--ink); }
 .data tbody th { color: var(--ink); }
 .farmer-masterlist tbody th[scope="row"] { background: transparent; }
+.report-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr)); gap: 1rem; }
+.report-chart h2 { margin-bottom: .7rem; }
+.report-chart small { color: var(--muted); }
+.chart-scroll { overflow-x: auto; padding: .2rem 0; }
+.chart-scroll:focus-visible { outline-offset: -2px; }
+.chart-bars { display: grid; gap: .55rem; list-style: none; padding: 0; margin: .6rem 0; }
+.chart-bar { display: grid; grid-template-columns: minmax(5rem, 1fr) minmax(0, 2fr) auto; align-items: center; gap: .4rem .65rem; }
+.chart-bar-label { overflow-wrap: anywhere; }
+.chart-bar-value { font-size: .82rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chart-bar-track { display: block; height: .65rem; border-radius: .4rem; background: var(--surface-raised); overflow: hidden; }
+.chart-bar-track > span { display: block; width: var(--bar-size); height: 100%; background: var(--green); }
+.chart-bar-alert .chart-bar-track > span { background: var(--red); }
+.chart-bars-monthly { grid-auto-flow: column; grid-auto-columns: minmax(3.15rem, 1fr); gap: .3rem; }
+.chart-bars-monthly .chart-bar { grid-template: auto 5.5rem auto / minmax(0, 1fr); justify-items: center; text-align: center; font-size: .8rem; }
+.chart-bars-monthly .chart-bar-value { grid-row: 1; font-size: .72rem; }
+.chart-bars-monthly .chart-bar-label { grid-row: 3; color: var(--muted); }
+.chart-bars-monthly .chart-bar-track { grid-row: 2; height: 100%; width: 65%; display: flex; align-items: flex-end; }
+.chart-bars-monthly .chart-bar-track > span { height: var(--bar-size); width: 100%; }
+.chart-donut {
+    width: 6.5rem;
+    aspect-ratio: 1;
+    margin: .8rem auto;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: conic-gradient(var(--green) 0 var(--collected-share), var(--red) var(--collected-share) 100%);
+}
+.chart-donut > span {
+    width: 77%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--surface);
+    display: grid;
+    place-content: center;
+    text-align: center;
+    font-weight: 700;
+}
 .sector-card dd { color: var(--green); }
 .tile-icon { background: #263c2a; }
 .sector-card:nth-child(3n + 2) .tile-icon { background: #443b23; }

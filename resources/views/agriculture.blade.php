@@ -28,7 +28,7 @@
     <script src="{{ asset('agriculture.js') }}" defer></script>
     <script src="{{ asset('auth-ui.js') }}" defer></script>
 </head>
-<body data-user="{{ $user->id }}" data-sync="{{ route('sync.session') }}">
+<body data-user="{{ $user->id }}" data-sync="{{ route('sync.session') }}" data-offline-url="{{ route('offline.workspace') }}" data-worker-url="{{ asset('map-offline-worker.js') }}">
 <div class="shell">
     <aside class="sidebar" id="workspace-sidebar">
         <a class="brand" href="{{ route('dashboard') }}"><span class="map-logo" aria-hidden="true"></span><span>MAP<small>Management of Agriculture Production</small></span></a>
@@ -121,7 +121,10 @@
                         <a class="button secondary" href="{{ route('reports', $export + ['format' => 'docx']) }}">Download DOCX</a>
                     @endif
                 </form>
-                @if ($report)<h2>{{ $reportTitle }}</h2>@endif
+                @if ($report)
+                    <h2>{{ $reportTitle }}</h2>
+                    @include('agriculture-report-charts')
+                @endif
                 @if (isset($sector))
                     <div class="metric-grid">
                     @foreach ($summary[$sector] as $label => $value)
@@ -356,7 +359,8 @@
 </div>
 <dialog id="sync-dialog">
     <h2>Record sync</h2>
-    <p>Entries queued from an open sector workspace sync when the connection returns and you’re signed in to the same account.</p>
+    <p>Record drafts sync when the connection returns and you’re signed in to the same account.</p>
+    <p><a href="{{ route('offline.workspace') }}">Open offline workspace</a> <span data-offline-status></span></p>
     <div data-sync-items></div>
     <div class="dialog-actions"><button type="button" class="secondary" data-close>Close</button><button type="button" data-retry>Sync now</button></div>
 </dialog>
